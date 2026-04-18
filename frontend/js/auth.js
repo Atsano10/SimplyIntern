@@ -22,7 +22,7 @@ async function signUp() {
         .from('profiles')
         .select('email')
         .eq('email', email)
-        .single()
+        .maybeSingle()
 
     if (existingEmail) {
         alert('An account with this email already exists!')
