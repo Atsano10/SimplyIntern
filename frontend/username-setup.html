@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SimplyIntern</title>
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="stylesheet" href="css/auth.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+
+  <body>
+    <div class="background">
+        <div class="login-wrapper">
+            <div class="title">
+                <p>One Last Step!</p>
+            </div>
+            <div class="info-sections">
+                <div class="input-group">
+                    <label for="username">Username</label>
+                    <input 
+                        type="text" 
+                        id="username" 
+                        name="username" 
+                        required/>
+                </div>
+                <div class="log-in-div">
+                    <button type="button" class="ls-button" onclick="saveUsername()">Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="js/auth.js"></script>
+  </body>
+</html>
