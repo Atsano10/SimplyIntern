@@ -133,3 +133,12 @@ async function checkUsername (){
 if (window.location.pathname.includes('username-setup')) {
     checkUsername()
 }
+
+if (window.location.pathname.includes('index') || 
+    window.location.pathname === '/') {
+    client.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+            window.location.href = 'search.html'
+        }
+    })
+}
