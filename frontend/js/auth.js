@@ -35,6 +35,17 @@ async function signUp() {
         email: email
     })
 
+    const { error: insertError } = await client.from('profiles').insert({
+    id: data.user.id,
+    username: username,
+    email: email
+    })
+
+    if (insertError) {
+        alert('Profile save failed: ' + insertError.message)
+        return
+    }
+
     alert('Account created successfully!')
     window.location.href = 'index.html'
 }
