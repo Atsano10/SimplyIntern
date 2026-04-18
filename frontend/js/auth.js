@@ -34,7 +34,7 @@ async function signUp() {
         .from('profiles')
         .select('username')
         .eq('username', username)
-        .single()
+        .maybeSingle()
 
     if (existingUsername) {
         alert('Username already taken!')
