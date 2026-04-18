@@ -137,11 +137,16 @@ async function saveUsername(){
         return
     }
 
-    await client.from('profiles').insert ({
-        id:user.id,
+    const { error: insertError } = await client.from('profiles').insert({
+        id: user.id,
         username: username,
         email: user.email
     })
+
+    if (insertError) {
+        alert('Insert failed: ' + insertError.message)
+        return
+    }
 
     window.location.href = 'search.html'
 }
