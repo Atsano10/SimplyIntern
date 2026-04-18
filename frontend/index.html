@@ -6,6 +6,7 @@
     <title>SimplyIntern</title>
     <link rel="stylesheet" href="css/styles.css" />
     <link rel="stylesheet" href="css/auth.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   </head>
 
@@ -32,18 +33,24 @@
                         name="password"  
                         required/>
                 </div>
-                <div class = "log-in-div">
-                    <form action = "search.html"><button type = "submit" class = "ls-button">Log In</button></form>
+                <div class="log-in-div">
+                    <button type = "button" class="ls-button" onclick="logIn()">Log In</button>
                 </div>
             </div>
             <div class = "breaker">
                 <span>or</span>
             </div>
-            <div class = "sign-up-div">
-                <form action="signup.html"><button type = "submit" class = "ls-button">Sign Up</button></form>
+            <div class="google-div">
+                <button type = "button" class="google-button" onclick="googleSignIn()">
+                    Continue with Google
+                </button>
+            </div>
+            <div class="sign-up-div">
+                <button type = "button" class="ls-button" onclick="window.location.href='signup.html'">Sign Up</button>
             </div>
         </div>
     </div>
+    <script src="js/auth.js"></script>
   </body>
 
 </html>
