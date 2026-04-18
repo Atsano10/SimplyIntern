@@ -11,40 +11,64 @@ async function signUp() {
     const password = document.getElementById('password').value
     const confirmPassword = document.getElementById("con_password").value
 
-    //confirm password is correct in both fields
-    if (confirmPassword != password){
+    // confirm passwords match
+    if (confirmPassword != password) {
         alert('Passwords do not match!')
         return
     }
 
-    // use input to create an account on supabase
+    // check if email already exists in profiles
+    const { data: existingEmail } = await client
+        .from('profiles')
+        .select('email')
+        .eq('email', email)
+        .single()
+
+    if (existingEmail) {
+        alert('An account with this email already exists!')
+        return
+    }
+
+    // check if username already taken
+    const { data: existingUsername } = await client
+        .from('profiles')
+        .select('username')
+        .eq('username', username)
+        .single()
+
+    if (existingUsername) {
+        alert('Username already taken!')
+        return
+    }
+
+    // create auth account
     const { data, error } = await client.auth.signUp({
         email: email,
         password: password
     })
-    
-    //show error message if sign up failed
+
     if (error) {
         alert(error.message)
         return
     }
 
-    await client.from('profiles').insert({
+    // save profile
+    const { error: insertError } = await client.from('profiles').insert({
         id: data.user.id,
         username: username,
         email: email
     })
 
-    const { error: insertError } = await client.from('profiles').insert({
-    id: data.user.id,
-    username: username,
-    email: email
-    })
-
     if (insertError) {
+    await client.auth.signOut()
+    
+    if (insertError.message.includes('username')) {
+        alert('Username already taken!')
+    } else {
         alert('Profile save failed: ' + insertError.message)
-        return
     }
+    return
+}
 
     alert('Account created successfully!')
     window.location.href = 'index.html'
