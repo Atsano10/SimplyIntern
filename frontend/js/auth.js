@@ -144,7 +144,8 @@ async function saveUsername(){
     })
 
     if (insertError) {
-        alert('Insert failed: ' + insertError.message)
+        console.error('Insert failed:', insertError.message)
+        alert('Something went wrong, please try again.')
         return
     }
 
