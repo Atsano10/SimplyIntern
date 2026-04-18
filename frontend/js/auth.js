@@ -134,11 +134,21 @@ if (window.location.pathname.includes('username-setup')) {
     checkUsername()
 }
 
-if (window.location.pathname.includes('index') || 
-    window.location.pathname === '/') {
-    client.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-            window.location.href = 'search.html'
-        }
-    })
+async function checkSession() {
+    const { data: { session } } = await client.auth.getSession()
+    if (session) {
+        window.location.href = 'search.html'
+    }
+}
+
+if (!window.location.pathname.includes('search') && 
+    !window.location.pathname.includes('tracker') &&
+    !window.location.pathname.includes('signup') &&
+    !window.location.pathname.includes('username-setup')) {
+    checkSession()
+}
+
+async function logOut() {
+    await client.auth.signOut()
+    window.location.href = 'index.html'
 }
