@@ -43,6 +43,11 @@ async function logIn(){
     const username = document.getElementById('username').value
     const password = document.getElementById('password').value
 
+    if (!username || !password){
+        alert('Please enter your username and password!')
+        return
+    }
+
     const { data:profileData, error: profileError } = await client
         .from('profiles')
         .select('email')
