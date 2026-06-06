@@ -178,7 +178,17 @@ if (window.location.pathname.includes('username-setup')) {
 async function checkSession() {
     const { data: { session } } = await client.auth.getSession()
     if (session) {
-        window.location.href = 'search.html'
+        const { data: profile } = await client
+            .from('profiles')
+            .select('username')
+            .eq('id', session.user.id)
+            .maybeSingle()
+
+        if (profile) {
+            window.location.href = 'search.html'
+        } else {
+            window.location.href = 'username-setup.html'
+        }
     }
 }
 
