@@ -51,6 +51,7 @@
                 <th>Company</th>
                 <th>Location</th>
                 <th>Pay Rate</th>
+                <th>Date Applied</th>
                 <th>Status</th>
                 <th>Notes</th>
                 <th></th>
@@ -58,7 +59,7 @@
             </thead>
             <tbody id="app_tbody">
               <tr class="empty_row" id="empty_row">
-                <td colspan="7">
+                <td colspan="8">
                   <div class="table_empty">
                     <p>No applications yet.</p>
                     <p>Click "Add Application" to start tracking manually.</p>
@@ -96,6 +97,13 @@
               <label>Pay Rate</label>
               <input type="text" id="m_pay" placeholder="e.g. $30 / hr" />
             </div>
+          </div>
+          <div class="form_row">
+            <div class="form_group">
+              <label>Date Applied</label>
+              <input type="date" id="m_date" />
+            </div>
+            <div class="form_group"></div>
           </div>
           <div class="form_group">
             <label>Status</label>

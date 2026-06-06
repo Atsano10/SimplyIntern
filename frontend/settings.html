@@ -22,14 +22,62 @@
         <h1>Settings</h1>
         <p>Manage your account and preferences.</p>
       </div>
-      <div class="settings_section">
-        <div class="settings_coming">
-          <p>Account settings coming soon.</p>
+
+      <!-- Profile -->
+      <div class="settings_card">
+        <div class="settings_card_header">Profile</div>
+        <div class="settings_card_body">
+          <div class="settings_field">
+            <label>Email</label>
+            <input type="email" id="s_email" disabled />
+          </div>
+          <div class="settings_field">
+            <label>Username</label>
+            <div class="settings_inline">
+              <input type="text" id="s_username" placeholder="username" />
+              <button id="save_username_btn" class="settings_btn">Save</button>
+            </div>
+            <span id="username_status" class="settings_status"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Security -->
+      <div class="settings_card">
+        <div class="settings_card_header">Security</div>
+        <div class="settings_card_body">
+          <div class="settings_field">
+            <label>New Password</label>
+            <input type="password" id="s_new_password" placeholder="New password" />
+          </div>
+          <div class="settings_field">
+            <label>Confirm Password</label>
+            <input type="password" id="s_confirm_password" placeholder="Confirm new password" />
+          </div>
+          <div class="settings_field_footer">
+            <span id="password_status" class="settings_status"></span>
+            <button id="save_password_btn" class="settings_btn">Update Password</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Danger Zone -->
+      <div class="settings_card settings_card_danger">
+        <div class="settings_card_header">Danger Zone</div>
+        <div class="settings_card_body">
+          <div class="settings_danger_row">
+            <div>
+              <p class="settings_danger_label">Delete Account</p>
+              <p class="settings_danger_desc">Permanently delete your account and all your data. This cannot be undone.</p>
+            </div>
+            <button id="delete_account_btn" class="settings_btn_danger">Delete Account</button>
+          </div>
         </div>
       </div>
     </div>
 
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
+    <script src="js/settings.js"></script>
   </body>
 </html>

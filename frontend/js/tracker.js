@@ -20,6 +20,7 @@ async function loadApplications() {
                     company: row.company,
                     location: row.location || '',
                     pay: row.pay || '',
+                    date_applied: row.date_applied || '',
                     status: row.status,
                     notes: row.notes || '',
                 }));
@@ -51,6 +52,7 @@ async function saveApplication(entry) {
                         company: entry.company,
                         location: entry.location,
                         pay: entry.pay,
+                        date_applied: entry.date_applied || null,
                         status: entry.status,
                         notes: entry.notes,
                     })
@@ -65,6 +67,7 @@ async function saveApplication(entry) {
                         company: entry.company,
                         location: entry.location,
                         pay: entry.pay,
+                        date_applied: entry.date_applied || null,
                         status: entry.status,
                         notes: entry.notes,
                     })
@@ -117,13 +120,23 @@ function renderTable() {
             <td>${app.company}</td>
             <td>${app.location || '—'}</td>
             <td>${app.pay || '—'}</td>
+            <td>${formatDate(app.date_applied)}</td>
             <td><span class="status_badge ${app.status}">${app.status}</span></td>
             <td>${app.notes || '—'}</td>
-            <td><button class="row_delete" onclick="deleteApp(${i})" title="Remove">&#10005;</button></td>
+            <td class="row_actions">
+                <button class="row_edit" onclick="openModal(${i})" title="Edit">&#9998;</button>
+                <button class="row_delete" onclick="deleteApp(${i})" title="Remove">&#10005;</button>
+            </td>
         </tr>
     `).join('');
 
     updateStats();
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '—';
+    const [y, m, d] = dateStr.split('-');
+    return `${m}/${d}/${y}`;
 }
 
 function updateStats() {
@@ -148,6 +161,7 @@ function openModal(index = null) {
         document.getElementById('m_company').value = app.company;
         document.getElementById('m_location').value = app.location || '';
         document.getElementById('m_pay').value = app.pay || '';
+        document.getElementById('m_date').value = app.date_applied || '';
         document.getElementById('m_status').value = app.status;
         document.getElementById('m_notes').value = app.notes || '';
     } else {
@@ -155,6 +169,7 @@ function openModal(index = null) {
         document.getElementById('m_company').value = '';
         document.getElementById('m_location').value = '';
         document.getElementById('m_pay').value = '';
+        document.getElementById('m_date').value = '';
         document.getElementById('m_status').value = 'Pending';
         document.getElementById('m_notes').value = '';
     }
@@ -188,6 +203,7 @@ document.getElementById('modal_save').addEventListener('click', async () => {
         company,
         location: document.getElementById('m_location').value.trim(),
         pay: document.getElementById('m_pay').value.trim(),
+        date_applied: document.getElementById('m_date').value,
         status: document.getElementById('m_status').value,
         notes: document.getElementById('m_notes').value.trim(),
     };

@@ -182,10 +182,12 @@ async function checkSession() {
     }
 }
 
-if (!window.location.pathname.includes('search') && 
+if (!window.location.pathname.includes('search') &&
     !window.location.pathname.includes('tracker') &&
     !window.location.pathname.includes('signup') &&
-    !window.location.pathname.includes('username-setup')) {
+    !window.location.pathname.includes('username-setup') &&
+    !window.location.pathname.includes('settings') &&
+    !window.location.pathname.includes('leaderboard')) {
     checkSession()
 }
 

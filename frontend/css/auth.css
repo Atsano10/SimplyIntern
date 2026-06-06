@@ -15,18 +15,18 @@
 
 .login-wrapper{
     width: min(80vw,560px);
-    border: 5px solid #080705;
-    padding: 25px;
+    border: 1.5px solid #d0b0b5;
+    border-radius: 14px;
+    padding: 32px;
     background-color: #FFFFFA;
-    box-shadow: 0px 0px 25px #eeb9c2;
+    box-shadow: 0 8px 40px rgba(8, 7, 5, 0.18);
 }
 
 .title {
     width: 50%;
-    font-size:48px;
+    font-size: 48px;
     padding-bottom: 25px;
     font-weight: 600;
-    text-shadow: 1.5px 1px gray;
 }
 
 .info-sections{
@@ -147,6 +147,18 @@
 }
 
 #password, #email, #username, #con_password {
-    font-family: 'Saira';
-    padding: 2px;
+    font-family: 'Saira', sans-serif;
+    font-size: 14px;
+    padding: 9px 12px;
+    border: 1.5px solid #d0b0b5;
+    border-radius: 8px;
+    outline: none;
+    color: #080705;
+    background: #FFFFFA;
+    transition: border-color 0.2s;
+    width: 100%;
+}
+
+#password:focus, #email:focus, #username:focus, #con_password:focus {
+    border-color: #702632;
 }

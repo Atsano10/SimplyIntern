@@ -2,6 +2,7 @@ body { background-color: #eeb9c2; }
 
 .settings_page {
     padding: 96px 48px 60px;
+    max-width: 680px;
 }
 
 .settings_header {
@@ -20,16 +21,157 @@ body { background-color: #eeb9c2; }
     margin-top: 4px;
 }
 
-.settings_section {
+.settings_card {
     background: #FFFFFA;
     border-radius: 14px;
     border: 1.5px solid #d0b0b5;
     overflow: hidden;
+    margin-bottom: 20px;
 }
 
-.settings_coming {
-    padding: 60px;
-    text-align: center;
-    color: #aaa;
+.settings_card_header {
+    padding: 14px 24px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #888;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    border-bottom: 1.5px solid #eeb9c2;
+    background: #f7eeef;
+}
+
+.settings_card_body {
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.settings_field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.settings_field label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #888;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+.settings_field input {
+    border: 1.5px solid #d0b0b5;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-family: 'Saira', sans-serif;
+    font-size: 14px;
+    color: #080705;
+    background: #FFFFFA;
+    outline: none;
+    transition: border-color 0.2s;
+    max-width: 360px;
+}
+
+.settings_field input:focus {
+    border-color: #702632;
+}
+
+.settings_field input:disabled {
+    background: #f3e6e8;
+    color: #888;
+    cursor: default;
+}
+
+.settings_inline {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    max-width: 360px;
+}
+
+.settings_inline input {
+    flex: 1;
+    max-width: unset;
+}
+
+.settings_btn {
+    padding: 9px 18px;
+    background: #702632;
+    color: #FFFFFA;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Saira', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+
+.settings_btn:hover {
+    background: #080705;
+}
+
+.settings_field_footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 360px;
+}
+
+.settings_status {
+    font-size: 13px;
+    min-height: 18px;
+}
+
+.settings_status.success { color: #2a7a4f; }
+.settings_status.error   { color: #702632; }
+
+/* Danger Zone */
+.settings_card_danger {
+    border-color: #f5c2c7;
+}
+
+.settings_card_danger .settings_card_header {
+    color: #702632;
+    background: #fdf3f4;
+    border-bottom-color: #f5c2c7;
+}
+
+.settings_danger_row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.settings_danger_label {
     font-size: 15px;
+    font-weight: 600;
+    color: #080705;
+}
+
+.settings_danger_desc {
+    font-size: 13px;
+    color: #888;
+    margin-top: 4px;
+}
+
+.settings_btn_danger {
+    padding: 9px 18px;
+    background: none;
+    color: #702632;
+    border: 1.5px solid #702632;
+    border-radius: 8px;
+    font-family: 'Saira', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.settings_btn_danger:hover {
+    background: #702632;
+    color: #FFFFFA;
 }

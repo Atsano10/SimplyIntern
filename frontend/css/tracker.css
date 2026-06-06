@@ -152,6 +152,27 @@ body {
     line-height: 1.8;
 }
 
+.row_actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.row_edit {
+    background: none;
+    border: none;
+    color: #ccc;
+    font-size: 16px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.row_edit:hover {
+    color: #702632;
+    background: #f3e6e8;
+}
+
 .row_delete {
     background: none;
     border: none;
