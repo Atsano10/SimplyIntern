@@ -3,42 +3,124 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SimplyIntern</title>
+    <title>Tracker — SimplyIntern</title>
     <link rel="stylesheet" href="css/styles.css" />
     <link rel="stylesheet" href="css/tracker.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
-  <body> 
-    <div class = "menu_bar"> <!-- add js for active nav bar-->
-      <div class = "logo">SimplyIntern</div>
-      <div class = "nav_section"><a href = "search.html">Search</a></div>
-      <div class = "nav_section"><a href="tracker.html">Tracker</a></div>
-      <div><button class = "additional">☰</button></div>
+  <body>
+    <div class="menu_bar">
+      <div class="logo">SimplyIntern</div>
+      <div class="nav_section"><a href="search.html">Search</a></div>
+      <div class="nav_section"><a href="leaderboard.html">Leaderboard</a></div>
+      <div class="nav_section"><a href="tracker.html">Tracker</a></div>
+      <button class="additional">&#9776;</button>
     </div>
-    <div class = "status_containers">
-      <div class = "status">Rejected:</div>
-      <div class = "status">Total:</div>
-      <div class = "status">Accepted:</div>
-    </div>
-    <div class = "list">
-      <div class = "container_title">
-        <div class = "container_box">Position</div>
-        <div  class = "container_box">Company</div>
-        <div class = "container_box">Location</div>
-        <div class = "container_box">Pay Rate</div>
-        <div class = "container_box">Status</div>
-        <div class = "container_box">Additional Notes</div>
+
+    <div class="tracker_page">
+      <div class="stats_row">
+        <div class="stat_card">
+          <div class="stat_number" id="stat_total">0</div>
+          <div class="stat_label">Total Applied</div>
+        </div>
+        <div class="stat_card stat_pending">
+          <div class="stat_number" id="stat_pending">0</div>
+          <div class="stat_label">Pending</div>
+        </div>
+        <div class="stat_card stat_rejected">
+          <div class="stat_number" id="stat_rejected">0</div>
+          <div class="stat_label">Rejected</div>
+        </div>
+        <div class="stat_card stat_accepted">
+          <div class="stat_number" id="stat_accepted">0</div>
+          <div class="stat_label">Accepted</div>
+        </div>
       </div>
-      <div class = "container">
-        <div class = "container_box">Position</div>
-        <div  class = "container_box">Company</div>
-        <div class = "container_box">Location</div>
-        <div class = "container_box">Pay Rate</div>
-        <div class = "container_box">Status</div>
-        <div class = "container_box">Additional Notes</div>
+
+      <div class="tracker_section">
+        <div class="tracker_header">
+          <h2 class="tracker_title">My Applications</h2>
+          <button class="add_btn" id="add_btn">+ Add Application</button>
+        </div>
+
+        <div class="table_wrapper">
+          <table class="app_table">
+            <thead>
+              <tr>
+                <th>Position</th>
+                <th>Company</th>
+                <th>Location</th>
+                <th>Pay Rate</th>
+                <th>Status</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="app_tbody">
+              <tr class="empty_row" id="empty_row">
+                <td colspan="7">
+                  <div class="table_empty">
+                    <p>No applications yet.</p>
+                    <p>Click "Add Application" to start tracking.</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
+
+    <!-- Add / Edit Modal -->
+    <div id="modal_overlay" class="modal_overlay" style="display:none;">
+      <div class="modal">
+        <div class="modal_header">
+          <h3 id="modal_title">Add Application</h3>
+          <button class="modal_close" id="modal_close">&#10005;</button>
+        </div>
+        <div class="modal_body">
+          <div class="form_group">
+            <label>Position</label>
+            <input type="text" id="m_position" placeholder="e.g. Software Engineering Intern" />
+          </div>
+          <div class="form_group">
+            <label>Company</label>
+            <input type="text" id="m_company" placeholder="e.g. Google" />
+          </div>
+          <div class="form_row">
+            <div class="form_group">
+              <label>Location</label>
+              <input type="text" id="m_location" placeholder="e.g. Remote" />
+            </div>
+            <div class="form_group">
+              <label>Pay Rate</label>
+              <input type="text" id="m_pay" placeholder="e.g. $30 / hr" />
+            </div>
+          </div>
+          <div class="form_group">
+            <label>Status</label>
+            <select id="m_status">
+              <option value="Pending">Pending</option>
+              <option value="Applied">Applied</option>
+              <option value="Interview">Interview</option>
+              <option value="Accepted">Accepted</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+          </div>
+          <div class="form_group">
+            <label>Notes</label>
+            <textarea id="m_notes" placeholder="Any notes about this application..." rows="3"></textarea>
+          </div>
+        </div>
+        <div class="modal_footer">
+          <button class="modal_cancel" id="modal_cancel">Cancel</button>
+          <button class="modal_save" id="modal_save">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/tracker.js"></script>
   </body>
-
 </html>
-
-   

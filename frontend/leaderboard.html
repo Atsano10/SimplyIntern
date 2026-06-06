@@ -3,22 +3,100 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SimplyIntern</title>
+    <title>Leaderboard — SimplyIntern</title>
     <link rel="stylesheet" href="css/styles.css" />
     <link rel="stylesheet" href="css/leaderboard.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
   </head>
-  <body> 
-    <div class = "menu_bar"> <!-- add js for active nav bar-->
-      <div class = "logo">SimplyIntern</div>
-      <div class = "nav_section"><a href="search.html">Search</a></div>
-      <div class = "nav_section"><a href="leaderboard.html">Leaderboard</a></div>
-      <div class = "nav_section"><a href="tracker.html">Tracker</a></div>
-      <div><button class = "additional">☰</button></div>
+  <body>
+    <div class="menu_bar">
+      <div class="logo">SimplyIntern</div>
+      <div class="nav_section"><a href="search.html">Search</a></div>
+      <div class="nav_section"><a href="leaderboard.html">Leaderboard</a></div>
+      <div class="nav_section"><a href="tracker.html">Tracker</a></div>
+      <button class="additional">&#9776;</button>
     </div>
-    <script src="js/auth.js"></script>
-  </body>
-  
 
+    <div class="lb_page">
+      <div class="lb_hero">
+        <div class="lb_hero_inner">
+          <div class="lb_eyebrow">Global Rankings</div>
+          <h1 class="lb_title">The Unemployed Leaderboard</h1>
+          <p class="lb_subtitle">Rejection is fuel. The more you apply, the higher you climb.</p>
+          <div class="lb_legend">
+            <span class="legend_item"><span class="legend_dot rejected"></span>Rejected</span>
+            <span class="legend_item"><span class="legend_dot pending"></span>Pending</span>
+            <span class="legend_sep">—</span>
+            <span class="legend_note">Grind Score = Rejected + Pending</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="lb_body">
+        <!-- Top 3 Podium — populated by leaderboard.js -->
+        <div class="podium_section" id="podium_section" style="display:none;">
+          <div class="podium_card silver" id="rank_2">
+            <div class="podium_rank">2</div>
+            <div class="podium_avatar" id="p2_avatar"></div>
+            <div class="podium_username" id="p2_username"></div>
+            <div class="podium_score" id="p2_score"></div>
+            <div class="podium_breakdown" id="p2_breakdown"></div>
+          </div>
+          <div class="podium_card gold" id="rank_1">
+            <div class="podium_crown">&#9733;</div>
+            <div class="podium_rank">1</div>
+            <div class="podium_avatar" id="p1_avatar"></div>
+            <div class="podium_username" id="p1_username"></div>
+            <div class="podium_score" id="p1_score"></div>
+            <div class="podium_breakdown" id="p1_breakdown"></div>
+          </div>
+          <div class="podium_card bronze" id="rank_3">
+            <div class="podium_rank">3</div>
+            <div class="podium_avatar" id="p3_avatar"></div>
+            <div class="podium_username" id="p3_username"></div>
+            <div class="podium_score" id="p3_score"></div>
+            <div class="podium_breakdown" id="p3_breakdown"></div>
+          </div>
+        </div>
+
+        <!-- Full Rankings Table — populated by leaderboard.js -->
+        <div class="rankings_section">
+          <table class="rankings_table">
+            <thead>
+              <tr>
+                <th class="col_rank">Rank</th>
+                <th>Username</th>
+                <th class="col_stat">Rejected</th>
+                <th class="col_stat">Pending</th>
+                <th class="col_score">Grind Score</th>
+              </tr>
+            </thead>
+            <tbody id="lb_tbody">
+              <tr><td colspan="5"><div class="table_loading">Loading...</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Your Standing -->
+        <div class="your_standing">
+          <div class="standing_label">Your Standing</div>
+          <div class="standing_card">
+            <div class="standing_rank">#—</div>
+            <div class="standing_info">
+              <div class="standing_username" id="your_username">@you</div>
+              <div class="standing_sub">Start tracking applications to appear on the board</div>
+            </div>
+            <div class="standing_score">
+              <span class="score_num" id="your_score">0</span>
+              <span class="score_label">pts</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/leaderboard.js"></script>
+  </body>
 </html>

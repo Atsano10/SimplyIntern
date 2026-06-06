@@ -1,0 +1,35 @@
+body { background-color: #eeb9c2; }
+
+.settings_page {
+    padding: 96px 48px 60px;
+}
+
+.settings_header {
+    margin-bottom: 28px;
+}
+
+.settings_header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #080705;
+}
+
+.settings_header p {
+    font-size: 15px;
+    color: #702632;
+    margin-top: 4px;
+}
+
+.settings_section {
+    background: #FFFFFA;
+    border-radius: 14px;
+    border: 1.5px solid #d0b0b5;
+    overflow: hidden;
+}
+
+.settings_coming {
+    padding: 60px;
+    text-align: center;
+    color: #aaa;
+    font-size: 15px;
+}

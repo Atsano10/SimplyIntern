@@ -3,63 +3,63 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SimplyIntern</title>
+    <title>Search — SimplyIntern</title>
     <link rel="stylesheet" href="css/styles.css" />
     <link rel="stylesheet" href="css/search.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
-  <body> 
-    <div class = "menu_bar"> <!-- add js for active nav bar-->
-      <div class = "logo">SimplyIntern</div>
-      <div class = "nav_section"><a href="search.html">Search</a></div>
-      <div class = "nav_section"><a href="tracker.html">Tracker</a></div>
-      <div><button class = "additional">☰</button></div>
+  <body>
+    <div class="menu_bar">
+      <div class="logo">SimplyIntern</div>
+      <div class="nav_section"><a href="search.html">Search</a></div>
+      <div class="nav_section"><a href="leaderboard.html">Leaderboard</a></div>
+      <div class="nav_section"><a href="tracker.html">Tracker</a></div>
+      <button class="additional">&#9776;</button>
     </div>
-    <div class = "search_menu">
+
+    <div class="page_content">
       <div class="search_engine">
-        <input type="text" class="search_input" placeholder="Search internships..." />
+        <input type="text" id="search_input" class="search_input" placeholder="Search internships, companies, or roles..." />
         <div class="search_filters">
-          <select class="filter_dropdown">
-            <option value="">📍 Location</option>
+          <select class="filter_dropdown" id="filter_location">
+            <option value="">Location</option>
             <option>Remote</option>
-            <option>New York</option>
-            <option>San Francisco</option>
-            <option>Chicago</option>
+            <option>New York, NY</option>
+            <option>San Francisco, CA</option>
+            <option>Chicago, IL</option>
+            <option>Boston, MA</option>
+            <option>Seattle, WA</option>
+            <option>Austin, TX</option>
           </select>
-          <select class="filter_dropdown">
-            <option value="">💼 Job Type</option>
+          <select class="filter_dropdown" id="filter_type">
+            <option value="">Job Type</option>
             <option>Full-time</option>
             <option>Part-time</option>
             <option>Contract</option>
           </select>
-          <select class="filter_dropdown">
-            <option value="">💰 Pay Rate</option>
+          <select class="filter_dropdown" id="filter_pay">
+            <option value="">Pay Rate</option>
             <option>Unpaid</option>
-            <option>$10–$15/hr</option>
-            <option>$15–$20/hr</option>
-            <option>$20+/hr</option>
+            <option>$10 – $15 / hr</option>
+            <option>$15 – $20 / hr</option>
+            <option>$20 – $30 / hr</option>
+            <option>$30+ / hr</option>
           </select>
-          <button class="search_btn">Search</button>
+          <button class="search_btn" id="search_btn">Search</button>
         </div>
-      </div> 
-      <div class = "job_options">
-        <div class = "jobs">
-          <div class = "left_jobs">
-            <div class = "info_title">Job Title</div>
-            <div class = "info_company">Company Name</div>
-            <div class = "info_location">Location</div>
-          </div>
-          <div class = "center_jobs">
-            <button>FINISHED APPLYING</button>
-          </div>
-          <div class = "right_jobs">
-            <div class = "info_rate">Pay Rate</div>
-            <div class = "info_link">Application Link</div>
-          </div>
+      </div>
+
+      <div class="results_area">
+        <div class="empty_state" id="empty_state">
+          <p class="empty_title">Find your next internship</p>
+          <p class="empty_sub">Use the filters above and click Search to browse listings.</p>
         </div>
+        <div class="job_list" id="job_list"></div>
+      </div>
     </div>
-    </div>
+
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/search.js"></script>
   </body>
-
 </html>
-
-   
