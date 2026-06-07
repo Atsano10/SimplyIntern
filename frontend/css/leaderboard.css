@@ -153,6 +153,16 @@ body {
     color: #c9a227;
 }
 
+.silver .podium_avatar{
+    color: #9a9a9a; 
+    background: #ede5e5;
+}
+
+.bronze .podium_avatar{
+    color:#a0522d;
+    background:#f0bda8;
+}
+
 .podium_username {
     font-size: 14px;
     font-weight: 600;
