@@ -2,7 +2,7 @@ body { background-color: #eeb9c2; }
 
 .settings_page {
     padding: 96px 48px 60px;
-    max-width: 680px;
+    max-width: 100%;
 }
 
 .settings_header {
