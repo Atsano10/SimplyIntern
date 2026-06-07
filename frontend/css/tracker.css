@@ -23,7 +23,7 @@ body {
     border-radius: 12px;
     padding: 20px 16px;
     text-align: center;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    transition: background 0.3s, border-color 0.2s, box-shadow 0.2s;
 }
 
 .stat_card:hover {
@@ -57,6 +57,7 @@ body {
     border: 1.5px solid #d0b0b5;
     border-radius: 14px;
     overflow: hidden;
+    transition: background 0.3s, border-color 0.3s;
 }
 
 .tracker_header {
@@ -207,6 +208,7 @@ body {
     max-width: 480px;
     box-shadow: 0 8px 40px rgba(8, 7, 5, 0.2);
     overflow: hidden;
+    transition: background 0.3s;
 }
 
 .modal_header {
@@ -336,6 +338,7 @@ body.dark .stat_card {
     border-color: #4a3035;
 }
 body.dark .stat_number { color: #f0e8ea; }
+body.dark .stat_label { color: #9a8284; }
 
 body.dark .tracker_section {
     background: #2c2022;
@@ -345,16 +348,25 @@ body.dark .tracker_header { border-bottom-color: #4a3035; }
 body.dark .tracker_title { color: #f0e8ea; }
 
 body.dark .app_table thead tr { background: #241819; }
-body.dark .app_table th { border-bottom-color: #4a3035; }
+body.dark .app_table th { border-bottom-color: #4a3035; color: #9a8284; }
 body.dark .app_table td {
     color: #f0e8ea;
     border-bottom-color: #3a2a2c;
 }
 body.dark .app_table tbody tr:hover td { background: #3a2a2c; }
 
+body.dark .table_empty { color: #9a8284; }
+
+body.dark .row_edit { color: #9a8284; }
+body.dark .row_edit:hover { color: #eeb9c2; background: #4a3035; }
+body.dark .row_delete { color: #9a8284; }
+body.dark .row_delete:hover { color: #eeb9c2; background: #4a3035; }
+
 body.dark .modal { background: #2c2022; }
 body.dark .modal_header { border-bottom-color: #4a3035; }
 body.dark .modal_header h3 { color: #f0e8ea; }
+body.dark .modal_close { border-color: #4a3035; color: #9a8284; }
+body.dark .modal_close:hover { border-color: #eeb9c2; color: #eeb9c2; }
 body.dark .modal_footer { border-top-color: #4a3035; }
 body.dark .form_group label { color: #9a8284; }
 body.dark .form_group input,
@@ -364,6 +376,10 @@ body.dark .form_group textarea {
     color: #f0e8ea;
     border-color: #4a3035;
 }
+body.dark .form_group input:focus,
+body.dark .form_group select:focus,
+body.dark .form_group textarea:focus {
+    border-color: #eeb9c2;
+}
 body.dark .modal_cancel { color: #9a8284; border-color: #4a3035; }
-body.dark .row_edit:hover { background: #4a3035; }
-body.dark .row_delete:hover { background: #4a3035; }
+body.dark .modal_cancel:hover { border-color: #eeb9c2; color: #eeb9c2; }

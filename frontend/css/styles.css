@@ -9,6 +9,7 @@
 body {
     font-family: 'Saira', sans-serif;
     background-color: #eeb9c2;
+    transition: background-color 0.3s ease;
 }
 
 button { cursor: pointer; }
@@ -226,10 +227,14 @@ a {
 /* ── DARK MODE ── */
 body.dark { background-color: #1e1517; }
 
-body.dark #nav_drawer { background: #2c2022; }
+body.dark #nav_drawer {
+    background: #2c2022;
+    transition: background 0.3s;
+}
 
 body.dark .drawer_link {
     color: #f0e8ea;
+    transition: background 0.15s, color 0.15s;
 }
 
 body.dark .drawer_link:hover {

@@ -1,6 +1,13 @@
-document.addEventListener('DOMContentLoaded', async () => {
+async function refreshAll() {
     await loadLeaderboard();
     await loadYourStanding();
+}
+
+document.addEventListener('DOMContentLoaded', refreshAll);
+
+// Re-fetch when browser restores this page from bfcache so stats stay current
+window.addEventListener('pageshow', (e) => {
+    if (e.persisted) refreshAll();
 });
 
 async function loadLeaderboard() {

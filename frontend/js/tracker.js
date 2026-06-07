@@ -13,28 +13,96 @@ async function loadApplications() {
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false });
 
-            if (!error && data) {
-                applications = data.map(row => ({
-                    id: row.id,
-                    position: row.position,
-                    company: row.company,
-                    location: row.location || '',
-                    pay: row.pay || '',
-                    date_applied: row.date_applied || '',
-                    status: row.status,
-                    notes: row.notes || '',
-                }));
-                // Keep localStorage in sync as cache
-                localStorage.setItem('si_applications', JSON.stringify(applications));
+            if (!error && data !== null) {
+                if (data.length > 0) {
+                    // Cloud has data — use it as the source of truth
+                    applications = data.map(row => ({
+                        id: row.id,
+                        position: row.position,
+                        company: row.company,
+                        location: row.location || '',
+                        pay: row.pay || '',
+                        date_applied: row.date_applied || '',
+                        status: row.status,
+                        notes: row.notes || '',
+                    }));
+                    localStorage.setItem('si_applications', JSON.stringify(applications));
+                    renderTable();
+                    return;
+                }
+
+                // Cloud returned empty — don't wipe localStorage.
+                // If local apps exist (unsaved from a previous session), keep them and try to push them up.
+                const local = JSON.parse(localStorage.getItem('si_applications') || '[]');
+                if (local.length > 0) {
+                    applications = local;
+                    renderTable();
+                    syncLocalApps(user); // non-blocking background sync
+                    return;
+                }
+
+                applications = [];
+                localStorage.setItem('si_applications', '[]');
                 renderTable();
                 return;
             }
         }
     } catch (_) {}
 
-    // Fallback: load from localStorage (not logged in or table doesn't exist yet)
+    // Fallback: not logged in or Supabase unreachable
     applications = JSON.parse(localStorage.getItem('si_applications') || '[]');
     renderTable();
+}
+
+// Push any local-only apps (no cloud id) up to Supabase
+async function syncLocalApps(user) {
+    let changed = false;
+    for (const app of applications) {
+        if (app.id) continue; // already in Supabase
+        const { data, error } = await client
+            .from('applications')
+            .insert({
+                user_id: user.id,
+                position: app.position,
+                company: app.company,
+                location: app.location,
+                pay: app.pay,
+                date_applied: app.date_applied || null,
+                status: app.status,
+                notes: app.notes,
+            })
+            .select()
+            .single();
+        if (data) { app.id = data.id; changed = true; }
+        if (error) showSyncBanner(error.message);
+    }
+    if (changed) localStorage.setItem('si_applications', JSON.stringify(applications));
+}
+
+function showSyncBanner(errorMsg) {
+    const existing = document.getElementById('sync_banner');
+    if (existing) existing.remove();
+    const isDark = document.body.classList.contains('dark');
+    const banner = document.createElement('div');
+    banner.id = 'sync_banner';
+    banner.style.cssText = [
+        `background:${isDark ? '#2a200a' : '#fff3cd'}`,
+        `color:${isDark ? '#ffc107' : '#856404'}`,
+        'padding:10px 20px',
+        'font-size:13px',
+        `border-bottom:1px solid ${isDark ? '#5a4000' : '#ffc107'}`,
+        'display:flex',
+        'align-items:center',
+        'justify-content:space-between',
+        'gap:12px',
+    ].join(';');
+    const msg = errorMsg ? `⚠ Sync failed: "${errorMsg}"` : '⚠ Sync failed — unknown error.';
+    banner.innerHTML = `
+        <span>${msg}</span>
+        <button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;font-size:16px;color:inherit;flex-shrink:0;">✕</button>
+    `;
+    const section = document.querySelector('.tracker_section');
+    if (section) section.prepend(banner);
 }
 
 // ── SAVE ────────────────────────────────────────────────────────────────────
@@ -45,7 +113,7 @@ async function saveApplication(entry) {
         if (user) {
             if (entry.id) {
                 // Update existing row
-                await client
+                const { error } = await client
                     .from('applications')
                     .update({
                         position: entry.position,
@@ -57,9 +125,10 @@ async function saveApplication(entry) {
                         notes: entry.notes,
                     })
                     .eq('id', entry.id);
+                if (error) console.error('Update failed:', error.message);
             } else {
                 // Insert new row and get back the UUID
-                const { data } = await client
+                const { data, error } = await client
                     .from('applications')
                     .insert({
                         user_id: user.id,
@@ -73,10 +142,17 @@ async function saveApplication(entry) {
                     })
                     .select()
                     .single();
-                if (data) entry.id = data.id;
+                if (error) {
+                    console.error('Insert failed:', error.message);
+                    showSyncBanner(error.message);
+                } else if (data) {
+                    entry.id = data.id;
+                }
             }
         }
-    } catch (_) {}
+    } catch (err) {
+        console.error('Save error:', err);
+    }
 
     localStorage.setItem('si_applications', JSON.stringify(applications));
 }
@@ -223,3 +299,8 @@ document.getElementById('modal_save').addEventListener('click', async () => {
 // ── INIT ─────────────────────────────────────────────────────────────────────
 
 loadApplications();
+
+// Re-sync from Supabase if browser restores this page from bfcache
+window.addEventListener('pageshow', (e) => {
+    if (e.persisted) loadApplications();
+});

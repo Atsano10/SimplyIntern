@@ -28,6 +28,7 @@ body { background-color: #eeb9c2; }
     overflow: hidden;
     width: 100%;
     margin-bottom: 20px;
+    transition: background 0.3s, border-color 0.3s;
 }
 
 .settings_card_header {

@@ -60,7 +60,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             .eq('id', user.id);
 
         if (error) return showStatus('username_status', 'Failed to update username.', false);
-        showStatus('username_status', 'Username updated!', true);
+        showStatus('username_status', `Username updated! Use @${newUsername} to log in.`, true);
+
+        // Keep nav drawer in sync without a page reload
+        const drawerEl = document.getElementById('drawer_username');
+        if (drawerEl) drawerEl.textContent = '@' + newUsername;
     });
 
     // ── Password ──
@@ -90,15 +94,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.textContent = 'Deleting…';
 
         try {
-            const { error: appErr } = await client.from('applications').delete().eq('user_id', user.id);
-            if (appErr) throw appErr;
+            const { error: rpcErr } = await client.rpc('delete_user');
+            if (rpcErr) throw rpcErr;
 
-            const { error: profileErr } = await client.from('profiles').delete().eq('id', user.id);
-            if (profileErr) throw profileErr;
-
-            // Deletes the auth user — requires the delete_user() function in Supabase (see README)
-            await client.rpc('delete_user');
-
+            await client.auth.signOut();
             window.location.href = 'index.html';
         } catch (err) {
             btn.disabled = false;

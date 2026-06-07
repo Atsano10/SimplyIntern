@@ -96,7 +96,7 @@ body {
     text-align: center;
     border: 1.5px solid #d0b0b5;
     position: relative;
-    transition: box-shadow 0.2s;
+    transition: background 0.3s, border-color 0.3s, box-shadow 0.2s;
 }
 
 .podium_card:hover {
@@ -189,6 +189,7 @@ body {
     border-radius: 14px;
     border: 1.5px solid #d0b0b5;
     overflow: hidden;
+    transition: background 0.3s, border-color 0.3s;
 }
 
 .rankings_table {
@@ -355,15 +356,26 @@ body.dark .podium_card {
 }
 body.dark .podium_username { color: #f0e8ea; }
 body.dark .podium_score { color: #f0e8ea; }
+body.dark .podium_breakdown { color: #9a8284; }
+body.dark .podium_rank { color: #9a8284; }
+
+body.dark .lb_subtitle { color: #9a8284; }
+body.dark .legend_item { color: #9a8284; }
+body.dark .legend_sep { color: #4a3035; }
+body.dark .legend_note { color: #9a8284; }
 
 body.dark .rankings_section {
     background: #2c2022;
     border-color: #4a3035;
 }
 body.dark .rankings_table thead tr { background: #241819; }
-body.dark .rankings_table th { border-bottom-color: #4a3035; }
+body.dark .rankings_table th { border-bottom-color: #4a3035; color: #9a8284; }
 body.dark .rank_row td { border-bottom-color: #3a2a2c; }
 body.dark .rank_row:hover td { background: #3a2a2c; }
 body.dark .rank_num { background: #4a3035; color: #9a8284; }
 body.dark .username_cell { color: #f0e8ea; }
 body.dark .col_score strong { color: #f0e8ea; }
+
+body.dark .standing_sub { color: #9a8284; }
+body.dark .score_label { color: #9a8284; }
+body.dark .table_loading { color: #9a8284; }

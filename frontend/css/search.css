@@ -129,7 +129,7 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    transition: background 0.3s, border-color 0.2s, box-shadow 0.2s;
 }
 
 .jobs:hover {
@@ -233,22 +233,41 @@ body {
 body.dark .search_engine {
     background: #2c2022;
     border-bottom-color: #702632;
+    transition: background 0.3s;
 }
 body.dark .search_input {
     background: #241819;
     color: #f0e8ea;
     border-color: #4a3035;
 }
+body.dark .search_input:focus { border-color: #eeb9c2; }
 body.dark .filter_dropdown {
     background: #241819;
     color: #f0e8ea;
     border-color: #4a3035;
 }
+body.dark .filter_dropdown:hover,
+body.dark .filter_dropdown:focus { border-color: #eeb9c2; }
 body.dark .empty_title { color: #f0e8ea; }
+body.dark .empty_sub { color: #9a8284; }
 body.dark .jobs {
     background: #2c2022;
     border-color: #4a3035;
 }
 body.dark .info_title { color: #f0e8ea; }
+body.dark .info_company { color: #eeb9c2; }
+body.dark .info_location { color: #9a8284; }
 body.dark .info_rate { color: #f0e8ea; }
-body.dark .apply_btn { background: #2c2022; }
+body.dark .info_link { color: #eeb9c2; }
+body.dark .info_link:hover { color: #f0e8ea; }
+body.dark .apply_btn {
+    background: #2c2022;
+    color: #eeb9c2;
+    border-color: #4a3035;
+}
+body.dark .apply_btn:hover {
+    background: #702632;
+    color: #FFFFFA;
+    border-color: #702632;
+}
+body.dark .no_results { color: #eeb9c2; }
