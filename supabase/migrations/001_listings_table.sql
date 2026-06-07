@@ -1,0 +1,25 @@
+-- Migration: create listings table
+--
+-- What goes here:
+--   CREATE TABLE listings (
+--     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--     title       TEXT NOT NULL,
+--     company     TEXT NOT NULL,
+--     location    TEXT,
+--     pay         TEXT,
+--     type        TEXT,              -- 'internship', 'co-op', etc.
+--     url         TEXT UNIQUE NOT NULL,
+--     source      TEXT NOT NULL,     -- 'greenhouse' | 'github'
+--     posted_at   DATE,
+--     created_at  TIMESTAMP DEFAULT now(),
+--     updated_at  TIMESTAMP DEFAULT now()
+--   );
+--
+--   CREATE INDEX ON listings (company);
+--   CREATE INDEX ON listings (source);
+--   CREATE INDEX ON listings (posted_at);
+--
+--   Enable Row Level Security:
+--     ALTER TABLE listings ENABLE ROW LEVEL SECURITY;
+--     CREATE POLICY "Public read" ON listings FOR SELECT USING (true);
+--     -- Only service role can insert/update/delete (via Edge Function)

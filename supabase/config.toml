@@ -1,0 +1,11 @@
+# Supabase project config
+# Docs: https://supabase.com/docs/guides/cli/config
+
+# What goes here:
+#   - Project ref and region (filled in after `supabase init`)
+#   - Cron schedule for the daily-refresh Edge Function:
+#
+#     [functions.daily-refresh]
+#     schedule = "0 6 * * *"   # runs every day at 6am UTC
+#
+#   - Any other Edge Function configs (verify_jwt, etc.)
