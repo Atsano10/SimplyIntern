@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             .eq('id', user.id);
         if (error) {
             lbToggle.checked = !lbToggle.checked;
+            alert('Failed to save leaderboard setting: ' + error.message);
         }
     });
 
