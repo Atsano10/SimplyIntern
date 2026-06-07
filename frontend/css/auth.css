@@ -162,3 +162,33 @@
 #password:focus, #email:focus, #username:focus, #con_password:focus {
     border-color: #702632;
 }
+
+/* ── MOBILE ── */
+@media (max-width: 640px) {
+    .login-wrapper {
+        width: min(92vw, 400px);
+        padding: 24px 20px;
+    }
+
+    .title {
+        font-size: 34px;
+        width: 100%;
+        padding-bottom: 18px;
+    }
+
+    .info-sections {
+        font-size: 18px;
+        padding-bottom: 18px;
+    }
+
+    .input-group,
+    .input-group_signup {
+        grid-template-columns: 1fr;
+        gap: 5px;
+    }
+
+    .ls-button,
+    .google-button {
+        width: 100%;
+    }
+}

@@ -383,3 +383,23 @@ body.dark .form_group textarea:focus {
 }
 body.dark .modal_cancel { color: #9a8284; border-color: #4a3035; }
 body.dark .modal_cancel:hover { border-color: #eeb9c2; color: #eeb9c2; }
+
+/* ── MOBILE ── */
+@media (max-width: 640px) {
+    .stats_row {
+        padding: 16px 16px 0;
+        gap: 10px;
+    }
+
+    .stat_number {
+        font-size: 32px;
+    }
+
+    .tracker_section {
+        margin: 16px 16px 32px;
+    }
+
+    .form_row {
+        grid-template-columns: 1fr;
+    }
+}

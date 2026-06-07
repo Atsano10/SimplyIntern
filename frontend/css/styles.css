@@ -245,3 +245,19 @@ body.dark .drawer_link:hover {
 body.dark .drawer_divider { background: #4a3035; }
 
 body.dark .drawer_footer { border-top-color: #4a3035; }
+
+/* ── MOBILE ── */
+@media (max-width: 640px) {
+    .menu_bar {
+        padding: 0 16px;
+    }
+
+    .logo {
+        padding-left: 0;
+        font-size: 22px;
+    }
+
+    .nav_section {
+        display: none;
+    }
+}

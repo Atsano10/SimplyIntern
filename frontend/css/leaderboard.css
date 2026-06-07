@@ -379,3 +379,50 @@ body.dark .col_score strong { color: #f0e8ea; }
 body.dark .standing_sub { color: #9a8284; }
 body.dark .score_label { color: #9a8284; }
 body.dark .table_loading { color: #9a8284; }
+
+/* ── MOBILE ── */
+@media (max-width: 640px) {
+    .lb_hero {
+        padding: 24px 16px 20px;
+    }
+
+    .lb_title {
+        font-size: 26px;
+    }
+
+    .lb_body {
+        padding: 20px 16px 40px;
+        gap: 20px;
+    }
+
+    .podium_section {
+        overflow-x: auto;
+        justify-content: flex-start;
+        padding-bottom: 8px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .podium_card {
+        min-width: 130px;
+        flex: 0 0 130px;
+        max-width: none;
+    }
+
+    .rankings_section {
+        overflow-x: auto;
+    }
+
+    .standing_card {
+        padding: 14px 16px;
+        gap: 12px;
+    }
+
+    .standing_rank {
+        font-size: 22px;
+        min-width: 36px;
+    }
+
+    .score_num {
+        font-size: 24px;
+    }
+}

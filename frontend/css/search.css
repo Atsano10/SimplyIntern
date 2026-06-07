@@ -271,3 +271,39 @@ body.dark .apply_btn:hover {
     border-color: #702632;
 }
 body.dark .no_results { color: #eeb9c2; }
+
+/* ── MOBILE ── */
+@media (max-width: 640px) {
+    .search_engine {
+        padding: 12px 16px;
+    }
+
+    .results_area {
+        padding: 16px 16px 32px;
+    }
+
+    .jobs {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    .right_jobs {
+        order: 2;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+    }
+
+    .center_jobs {
+        order: 3;
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .apply_btn {
+        width: 100%;
+        text-align: center;
+    }
+}
