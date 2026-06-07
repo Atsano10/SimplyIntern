@@ -1,9 +1,25 @@
-// Frontend API client — centralizes all calls to the backend
-//
-// What goes here:
-//   - fetchJobs(filters) — calls GET /api/jobs with query params, returns listings array
-//       filters: { keyword, location, type, pay }
-//   - This replaces the hardcoded demo data currently in search.js
-//   - All other future API calls (e.g. reporting a dead link) go here too
-//
-// search.js will import and call fetchJobs() instead of using local demo data
+// Centralizes all backend calls so search.js never talks to Supabase or /api directly.
+// Uses the Supabase client (`client` from auth.js) to query the listings table directly —
+// this works because the listings table has a public-read RLS policy (no auth required).
+
+async function fetchJobs(filters = {}) {
+  let query = client.from('listings').select('*');
+
+  if (filters.keyword) {
+    // or() searches title AND company so "stripe engineer" finds both fields
+    query = query.or(
+      `title.ilike.%${filters.keyword}%,company.ilike.%${filters.keyword}%`
+    );
+  }
+
+  if (filters.location) {
+    query = query.ilike('location', `%${filters.location}%`);
+  }
+
+  const { data, error } = await query
+    .order('posted_at', { ascending: false, nullsFirst: false })
+    .limit(150);
+
+  if (error) throw error;
+  return data ?? [];
+}

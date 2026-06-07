@@ -1,13 +1,59 @@
 // Vercel Serverless Function — GET /api/jobs
 //
-// This endpoint is the main job fetching route called by the frontend search page.
-//
-// What goes here:
-//   - Accept optional query params: ?keyword=&location=&type=&pay=
-//   - Query the Supabase `listings` table for cached job data
-//   - Apply filters server-side before returning results
-//   - Return a JSON array of normalized job objects:
-//       { id, title, company, location, pay, type, url, source, posted_at }
-//
+// Reads from the Supabase `listings` table and returns filtered results.
+// Uses the Supabase REST API directly (no npm package) so no package.json needed.
 // The listings table is populated by the daily-refresh Supabase Edge Function.
-// This endpoint only reads — it does not fetch from external sources directly.
+//
+// Required env vars in Vercel dashboard:
+//   SUPABASE_URL      = https://mijakorauzqwzfffvcwb.supabase.co
+//   SUPABASE_ANON_KEY = (your anon/public key from Supabase → Settings → API)
+
+module.exports = async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'GET')    return res.status(405).json({ error: 'Method not allowed' });
+
+  const { SUPABASE_URL, SUPABASE_ANON_KEY } = process.env;
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return res.status(500).json({ error: 'Missing SUPABASE_URL or SUPABASE_ANON_KEY env vars' });
+  }
+
+  const { keyword, location } = req.query;
+
+  // PostgREST (Supabase's REST layer) uses `*` as the LIKE wildcard in URLs, not `%`.
+  // The `or` filter lets us search across multiple columns at once.
+  let url = `${SUPABASE_URL}/rest/v1/listings?select=*`;
+
+  if (keyword) {
+    const orFilter = `(title.ilike.*${keyword}*,company.ilike.*${keyword}*)`;
+    url += `&or=${encodeURIComponent(orFilter)}`;
+  }
+
+  if (location) {
+    url += `&location=ilike.*${encodeURIComponent(location)}*`;
+  }
+
+  // nullslast: jobs with no posted_at date go at the bottom
+  url += '&order=posted_at.desc.nullslast&limit=150';
+
+  const response = await fetch(url, {
+    headers: {
+      apikey:        SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      Accept:        'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    return res.status(500).json({ error: err });
+  }
+
+  const data = await response.json();
+
+  // Cache at the Vercel edge for 5 minutes — reduces DB load on popular searches
+  res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
+  return res.status(200).json(data);
+};
