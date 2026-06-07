@@ -26,7 +26,7 @@ body { background-color: #eeb9c2; }
     border-radius: 14px;
     border: 1.5px solid #d0b0b5;
     overflow: hidden;
-    width: 400px;
+    width: 100%;
     margin-bottom: 20px;
 }
 
