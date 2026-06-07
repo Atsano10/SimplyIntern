@@ -175,3 +175,113 @@ body { background-color: #eeb9c2; }
     background: #702632;
     color: #FFFFFA;
 }
+
+/* ── TOGGLE ROWS ── */
+.settings_toggle_row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.settings_toggle_label {
+    font-size: 15px;
+    font-weight: 600;
+    color: #080705;
+}
+
+.settings_toggle_desc {
+    font-size: 13px;
+    color: #888;
+    margin-top: 4px;
+}
+
+.toggle_switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.toggle_switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle_slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: #d0b0b5;
+    border-radius: 24px;
+    transition: background 0.2s;
+}
+
+.toggle_slider::before {
+    content: '';
+    position: absolute;
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background: #FFFFFA;
+    border-radius: 50%;
+    transition: transform 0.2s;
+}
+
+.toggle_switch input:checked + .toggle_slider {
+    background: #702632;
+}
+
+.toggle_switch input:checked + .toggle_slider::before {
+    transform: translateX(20px);
+}
+
+/* ── DARK MODE ── */
+body.dark .settings_header h1 { color: #f0e8ea; }
+body.dark .settings_header p { color: #eeb9c2; }
+
+body.dark .settings_card {
+    background: #2c2022;
+    border-color: #4a3035;
+}
+
+body.dark .settings_card_header {
+    background: #241819;
+    border-bottom-color: #4a3035;
+    color: #9a8284;
+}
+
+body.dark .settings_field label { color: #9a8284; }
+
+body.dark .settings_field input {
+    background: #241819;
+    color: #f0e8ea;
+    border-color: #4a3035;
+}
+
+body.dark .settings_field input:disabled {
+    background: #1e1517;
+    color: #9a8284;
+}
+
+body.dark .settings_field input:focus { border-color: #eeb9c2; }
+
+body.dark .settings_danger_label { color: #f0e8ea; }
+body.dark .settings_danger_desc { color: #9a8284; }
+
+body.dark .settings_card_danger { border-color: #7a3540; }
+body.dark .settings_card_danger .settings_card_header {
+    background: #3a2022;
+    border-bottom-color: #7a3540;
+}
+
+body.dark .settings_status.success { color: #5cb88a; }
+
+body.dark .settings_toggle_label { color: #f0e8ea; }
+body.dark .settings_toggle_desc { color: #9a8284; }
+
+body.dark .toggle_slider { background: #4a3035; }
+body.dark .toggle_slider::before { background: #f0e8ea; }

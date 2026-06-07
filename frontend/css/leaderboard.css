@@ -337,3 +337,23 @@ body {
     color: #aaa;
     font-size: 15px;
 }
+
+/* ── DARK MODE ── */
+body.dark .podium_card {
+    background: #2c2022;
+    border-color: #4a3035;
+}
+body.dark .podium_username { color: #f0e8ea; }
+body.dark .podium_score { color: #f0e8ea; }
+
+body.dark .rankings_section {
+    background: #2c2022;
+    border-color: #4a3035;
+}
+body.dark .rankings_table thead tr { background: #241819; }
+body.dark .rankings_table th { border-bottom-color: #4a3035; }
+body.dark .rank_row td { border-bottom-color: #3a2a2c; }
+body.dark .rank_row:hover td { background: #3a2a2c; }
+body.dark .rank_num { background: #4a3035; color: #9a8284; }
+body.dark .username_cell { color: #f0e8ea; }
+body.dark .col_score strong { color: #f0e8ea; }

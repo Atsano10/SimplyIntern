@@ -1,4 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
+    if (localStorage.getItem('darkMode') === 'true') {
+        document.body.classList.add('dark');
+    }
+
     document.body.insertAdjacentHTML('beforeend', `
         <div id="nav_overlay"></div>
         <div id="nav_drawer">

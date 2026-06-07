@@ -7,7 +7,7 @@ async function loadLeaderboard() {
     // 1. Fetch every registered user
     const { data: profiles, error: profileError } = await client
         .from('profiles')
-        .select('id, username');
+        .select('id, username, leaderboard_opt_out');
 
     if (profileError || !profiles) {
         showTableError();
@@ -20,8 +20,8 @@ async function loadLeaderboard() {
         .select('user_id, status')
         .in('status', ['Rejected', 'Pending', 'Applied', 'Interview']);
 
-    // 3. Build ranked list — include every user, even those with 0
-    const ranked = profiles.map(profile => {
+    // 3. Build ranked list — exclude opted-out users
+    const ranked = profiles.filter(p => !p.leaderboard_opt_out).map(profile => {
         const userApps = apps ? apps.filter(a => a.user_id === profile.id) : [];
         const rejected = userApps.filter(a => a.status === 'Rejected').length;
         const pending  = userApps.filter(a => ['Pending', 'Applied', 'Interview'].includes(a.status)).length;

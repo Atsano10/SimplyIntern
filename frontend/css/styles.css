@@ -222,3 +222,21 @@ a {
 .drawer_logout_btn:hover {
     background: #080705;
 }
+
+/* ── DARK MODE ── */
+body.dark { background-color: #1e1517; }
+
+body.dark #nav_drawer { background: #2c2022; }
+
+body.dark .drawer_link {
+    color: #f0e8ea;
+}
+
+body.dark .drawer_link:hover {
+    background: #4a3035;
+    color: #f0e8ea;
+}
+
+body.dark .drawer_divider { background: #4a3035; }
+
+body.dark .drawer_footer { border-top-color: #4a3035; }

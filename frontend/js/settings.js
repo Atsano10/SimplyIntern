@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const { data: profile } = await client
         .from('profiles')
-        .select('username, email')
+        .select('username, email, leaderboard_opt_out')
         .eq('id', user.id)
         .single();
 
@@ -17,6 +17,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('s_username').value = profile.username || '';
     }
 
+    // ── Dark Mode ──
+    const darkToggle = document.getElementById('dark_mode_toggle');
+    darkToggle.checked = localStorage.getItem('darkMode') === 'true';
+    darkToggle.addEventListener('change', () => {
+        const isDark = darkToggle.checked;
+        localStorage.setItem('darkMode', String(isDark));
+        document.body.classList.toggle('dark', isDark);
+    });
+
+    // ── Leaderboard Opt-Out ──
+    const lbToggle = document.getElementById('leaderboard_opt_out_toggle');
+    lbToggle.checked = profile?.leaderboard_opt_out || false;
+    lbToggle.addEventListener('change', async () => {
+        const { error } = await client
+            .from('profiles')
+            .update({ leaderboard_opt_out: lbToggle.checked })
+            .eq('id', user.id);
+        if (error) {
+            lbToggle.checked = !lbToggle.checked;
+        }
+    });
+
+    // ── Username ──
     document.getElementById('save_username_btn').addEventListener('click', async () => {
         const newUsername = document.getElementById('s_username').value.trim();
         if (!newUsername) return showStatus('username_status', 'Username cannot be empty.', false);
@@ -39,6 +62,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         showStatus('username_status', 'Username updated!', true);
     });
 
+    // ── Password ──
     document.getElementById('save_password_btn').addEventListener('click', async () => {
         const newPass = document.getElementById('s_new_password').value;
         const confirmPass = document.getElementById('s_confirm_password').value;
@@ -55,14 +79,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         showStatus('password_status', 'Password updated!', true);
     });
 
+    // ── Delete Account ──
     document.getElementById('delete_account_btn').addEventListener('click', async () => {
         const confirmed = confirm('Are you sure you want to delete your account? This cannot be undone.');
         if (!confirmed) return;
 
-        await client.from('applications').delete().eq('user_id', user.id);
-        await client.from('profiles').delete().eq('id', user.id);
-        await client.auth.signOut();
-        window.location.href = 'index.html';
+        const btn = document.getElementById('delete_account_btn');
+        btn.disabled = true;
+        btn.textContent = 'Deleting…';
+
+        try {
+            const { error: appErr } = await client.from('applications').delete().eq('user_id', user.id);
+            if (appErr) throw appErr;
+
+            const { error: profileErr } = await client.from('profiles').delete().eq('id', user.id);
+            if (profileErr) throw profileErr;
+
+            // Deletes the auth user — requires the delete_user() function in Supabase (see README)
+            await client.rpc('delete_user');
+
+            window.location.href = 'index.html';
+        } catch (err) {
+            btn.disabled = false;
+            btn.textContent = 'Delete Account';
+            alert('Could not delete account: ' + (err.message || 'Unknown error'));
+        }
     });
 });
 

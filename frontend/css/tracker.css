@@ -329,3 +329,41 @@ body {
 .modal_save:hover {
     background: #080705;
 }
+
+/* ── DARK MODE ── */
+body.dark .stat_card {
+    background: #2c2022;
+    border-color: #4a3035;
+}
+body.dark .stat_number { color: #f0e8ea; }
+
+body.dark .tracker_section {
+    background: #2c2022;
+    border-color: #4a3035;
+}
+body.dark .tracker_header { border-bottom-color: #4a3035; }
+body.dark .tracker_title { color: #f0e8ea; }
+
+body.dark .app_table thead tr { background: #241819; }
+body.dark .app_table th { border-bottom-color: #4a3035; }
+body.dark .app_table td {
+    color: #f0e8ea;
+    border-bottom-color: #3a2a2c;
+}
+body.dark .app_table tbody tr:hover td { background: #3a2a2c; }
+
+body.dark .modal { background: #2c2022; }
+body.dark .modal_header { border-bottom-color: #4a3035; }
+body.dark .modal_header h3 { color: #f0e8ea; }
+body.dark .modal_footer { border-top-color: #4a3035; }
+body.dark .form_group label { color: #9a8284; }
+body.dark .form_group input,
+body.dark .form_group select,
+body.dark .form_group textarea {
+    background: #241819;
+    color: #f0e8ea;
+    border-color: #4a3035;
+}
+body.dark .modal_cancel { color: #9a8284; border-color: #4a3035; }
+body.dark .row_edit:hover { background: #4a3035; }
+body.dark .row_delete:hover { background: #4a3035; }

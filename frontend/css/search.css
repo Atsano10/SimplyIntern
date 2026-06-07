@@ -228,3 +228,27 @@ body {
     color: #702632;
     font-size: 16px;
 }
+
+/* ── DARK MODE ── */
+body.dark .search_engine {
+    background: #2c2022;
+    border-bottom-color: #702632;
+}
+body.dark .search_input {
+    background: #241819;
+    color: #f0e8ea;
+    border-color: #4a3035;
+}
+body.dark .filter_dropdown {
+    background: #241819;
+    color: #f0e8ea;
+    border-color: #4a3035;
+}
+body.dark .empty_title { color: #f0e8ea; }
+body.dark .jobs {
+    background: #2c2022;
+    border-color: #4a3035;
+}
+body.dark .info_title { color: #f0e8ea; }
+body.dark .info_rate { color: #f0e8ea; }
+body.dark .apply_btn { background: #2c2022; }
