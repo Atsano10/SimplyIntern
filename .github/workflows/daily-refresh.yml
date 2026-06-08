@@ -1,0 +1,15 @@
+name: Daily Refresh
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger job refresh
+        run: |
+          curl -X POST https://mijakorauzqwzfffvcwb.supabase.co/functions/v1/daily-refresh \
+            -H "Content-Type: application/json"

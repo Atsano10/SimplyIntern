@@ -8,13 +8,14 @@ async function performSearch() {
 
   const keyword  = document.getElementById('search_input').value.trim();
   const location = document.getElementById('filter_location').value;
+  const jobType  = document.getElementById('filter_type').value;
 
   const jobList = document.getElementById('job_list');
   jobList.classList.add('visible');
   jobList.innerHTML = '<div class="no_results">Loading listings...</div>';
 
   try {
-    const jobs = await fetchJobs({ keyword, location });
+    const jobs = await fetchJobs({ keyword, location, jobType });
     renderResults(jobs);
   } catch (err) {
     console.error('Search failed:', err);

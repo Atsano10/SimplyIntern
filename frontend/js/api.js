@@ -16,6 +16,10 @@ async function fetchJobs(filters = {}) {
     query = query.ilike('location', `%${filters.location}%`);
   }
 
+  if (filters.jobType) {
+    query = query.eq('type', filters.jobType);
+  }
+
   const { data, error } = await query
     .order('posted_at', { ascending: false, nullsFirst: false })
     .limit(150);
