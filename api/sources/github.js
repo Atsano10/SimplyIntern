@@ -3,11 +3,10 @@ const REPOS = [
   { owner: 'SimplifyJobs', repo: 'Summer2026-Internships' },
 ];
 
-const INTERN_KEYWORDS = ['intern', 'internship', 'co-op', 'coop', 'summer'];
+const INTERN_RE = /\b(intern|internship|co-op|coop|summer)\b/i;
 
 function isInternship(title) {
-  const t = title.toLowerCase();
-  return INTERN_KEYWORDS.some(kw => t.includes(kw));
+  return INTERN_RE.test(title);
 }
 
 // Parses a GitHub README markdown table into job objects.
