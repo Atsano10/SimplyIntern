@@ -16,10 +16,9 @@ interface Listing {
 
 // ─── Classification helpers ──────────────────────────────────────────────────
 
-const INTERN_KEYWORDS = ['intern', 'internship', 'co-op', 'coop', 'co op', 'externship', 'extern'];
+const INTERN_RE = /\b(intern|internship|co-op|coop|co\s+op|externship|extern)\b/i;
 
-const isInternship = (text: string) =>
-  INTERN_KEYWORDS.some(kw => text.toLowerCase().includes(kw));
+const isInternship = (text: string) => INTERN_RE.test(text);
 
 function getType(title: string): string {
   const lower = title.toLowerCase();
