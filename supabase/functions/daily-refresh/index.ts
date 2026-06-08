@@ -29,15 +29,6 @@ function getType(title: string): string {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-async function mapPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = [];
-  for (let i = 0; i < items.length; i += limit) {
-    const batch = items.slice(i, i + limit);
-    results.push(...await Promise.all(batch.map(fn)));
-  }
-  return results;
-}
-
 // ─── Greenhouse ──────────────────────────────────────────────────────────────
 
 const GREENHOUSE_COMPANIES = [
@@ -61,69 +52,11 @@ const GREENHOUSE_COMPANIES = [
   'workato', 'toast', 'ripple', 'block', 'point72', 'virtu', 'verkada',
 ];
 
-// Negative lookbehind on the $ avoids foreign currencies like "R$3.000" (BRL).
-const PAY_RE = /(?<![A-Za-z])\$\s?[\d,]{2,}(?:\.\d{2})?(?:\s*(?:[-–—]|to)\s*\$?\s?[\d,]{2,}(?:\.\d{2})?)?(?:\s*(?:per|\/)\s*(?:hr|hour|yr|year|mo|month|week|wk))?/i;
-
-// Greenhouse content arrives HTML-entity-encoded (e.g. "&lt;span&gt;"), so we
-// must decode entities before stripping tags or the pay block stays hidden.
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&amp;/g, '&');
-}
-
-// Accept a match only if it looks like real compensation (a thousands comma,
-// a per-unit suffix, or a range) so we don't surface garbage like "$3.000".
-function validatePay(val: string | null): string | null {
-  if (!val) return null;
-  const v = val.trim();
-  const hasComma = /,/.test(v);
-  const hasUnit  = /(per|\/)\s*(hr|hour|yr|year|mo|month|week|wk)/i.test(v);
-  const isRange  = /[-–—]|to/.test(v);
-  return (hasComma || hasUnit || isRange) ? v : null;
-}
-
-function extractPayFromHtml(html: string): string | null {
-  if (!html) return null;
-  const text = decodeEntities(html)
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ');
-  const m = text.match(PAY_RE);
-  return validatePay(m ? m[0] : null);
-}
-
-function extractGreenhousePay(job: any): string | null {
-  // Some companies configure a pay/salary metadata field on their Greenhouse board
-  for (const meta of (job.metadata ?? [])) {
-    if (!meta.name || meta.value == null) continue;
-    // value can be an object/array for some field types — skip those
-    if (typeof meta.value !== 'string' && typeof meta.value !== 'number') continue;
-    const name = meta.name.toLowerCase();
-    if (['pay', 'salary', 'compensation', 'wage', 'rate', 'stipend'].some(k => name.includes(k))) {
-      const val = validatePay(String(meta.value));
-      if (val) return val;
-    }
-  }
-  // Most boards embed pay in the job description HTML (a "pay-range" block)
-  const fromContent = extractPayFromHtml(job.content ?? '');
-  if (fromContent) return fromContent;
-  // Last resort: parse a pay pattern directly from the job title e.g. "$25/hr"
-  const m = decodeEntities(job.title ?? '').match(PAY_RE);
-  return validatePay(m ? m[0] : null);
-}
-
 async function fetchGreenhouse(company: string): Promise<Listing[]> {
   try {
-    // ?content=true returns each job's full description inline, so we can pull
-    // pay from the embedded "pay-range" block without a per-job follow-up fetch.
     const res = await fetch(
-      `https://boards-api.greenhouse.io/v1/boards/${company}/jobs?content=true`,
-      { signal: AbortSignal.timeout(10000) }
+      `https://boards-api.greenhouse.io/v1/boards/${company}/jobs`,
+      { signal: AbortSignal.timeout(8000) }
     );
     if (!res.ok) return [];
     // deno-lint-ignore no-explicit-any
@@ -134,7 +67,7 @@ async function fetchGreenhouse(company: string): Promise<Listing[]> {
         title:      j.title,
         company:    capitalize(company),
         location:   j.location?.name ?? null,
-        pay:        extractGreenhousePay(j),
+        pay:        null,
         type:       getType(j.title),
         url:        j.absolute_url,
         source:     'greenhouse',
@@ -226,10 +159,9 @@ Deno.serve(async (_req: Request) => {
   );
   const githubToken = Deno.env.get('GITHUB_TOKEN');
 
-  // Fetch all sources. Greenhouse runs in small batches (bounded concurrency)
-  // because ?content=true payloads are large; GitHub repos are few, so parallel.
+  // Fetch all sources in parallel
   const [ghResults, gitResults] = await Promise.all([
-    mapPool(GREENHOUSE_COMPANIES, 4, fetchGreenhouse),
+    Promise.all(GREENHOUSE_COMPANIES.map(fetchGreenhouse)),
     Promise.all(GITHUB_REPOS.map(({ owner, repo }) => fetchGithubRepo(owner, repo, githubToken))),
   ]);
 
