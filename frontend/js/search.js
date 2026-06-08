@@ -213,6 +213,7 @@ function renderResults(jobs, append) {
   jobs.forEach(job => {
     const div = document.createElement('div');
     div.className = 'jobs';
+    const pay = typeof job.pay === 'string' && job.pay ? job.pay : '';
     div.innerHTML = `
       <div class="left_jobs">
         <div class="info_title">${esc(job.title)}</div>
@@ -224,10 +225,10 @@ function renderResults(jobs, append) {
           data-title="${esc(job.title)}"
           data-company="${esc(job.company)}"
           data-location="${esc(job.location || '')}"
-          data-pay="${esc(job.pay || '')}">Mark Applied</button>
+          data-pay="${esc(pay)}">Mark Applied</button>
       </div>
       <div class="right_jobs">
-        <div class="info_rate">${esc(job.pay || 'Pay not listed')}</div>
+        <div class="info_rate">${esc(pay) || 'Pay not listed'}</div>
         <a class="info_link" href="${esc(job.url)}" target="_blank" rel="noopener noreferrer">View Listing</a>
       </div>
     `;

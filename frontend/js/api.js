@@ -29,7 +29,15 @@ async function fetchJobs(filters = {}, offset = 0, limit = 50) {
   }
 
   if (filters.jobTypes && filters.jobTypes.length > 0) {
-    query = query.in('type', filters.jobTypes);
+    // Use title matching instead of the type field — the DB type field has bad data
+    // from the scraper (e.g. "External Communications" was tagged as externship)
+    const TYPE_PATTERNS = {
+      'internship': ['intern'],
+      'co-op':      ['co-op', 'co op', 'coop'],
+      'externship': ['externship', 'extern '],
+    };
+    const patterns = filters.jobTypes.flatMap(t => TYPE_PATTERNS[t] || [t]);
+    query = query.or(patterns.map(p => `title.ilike.%${p}%`).join(','));
   }
 
   const { data, error } = await query
