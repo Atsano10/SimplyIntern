@@ -66,6 +66,39 @@ function extractGreenhousePay(job: any): string | null {
   return m ? m[0] : null;
 }
 
+function extractPayFromHtml(html: string): string | null {
+  const text = html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&#\d+;/g, '')
+    .replace(/\s+/g, ' ');
+  const m = text.match(/\$[\d,]+(?:\.\d+)?(?:\s*[-–]\s*\$[\d,]+(?:\.\d+)?)?(?:\s*(?:per|\/)\s*(?:hr|hour|yr|year|mo|month|week|wk))?/i);
+  return m ? m[0].trim() : null;
+}
+
+async function fetchGreenhouseJobPay(company: string, jobId: number): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://boards-api.greenhouse.io/v1/boards/${company}/jobs/${jobId}`,
+      { signal: AbortSignal.timeout(3000) }
+    );
+    if (!res.ok) return null;
+    // deno-lint-ignore no-explicit-any
+    const data: any = await res.json();
+    for (const meta of (data.metadata ?? [])) {
+      if (!meta.name || !meta.value) continue;
+      const name = meta.name.toLowerCase();
+      if (['pay', 'salary', 'compensation', 'wage', 'rate', 'stipend'].some(k => name.includes(k))) {
+        return String(meta.value).trim();
+      }
+    }
+    return data.content ? extractPayFromHtml(data.content) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchGreenhouse(company: string): Promise<Listing[]> {
   try {
     const res = await fetch(
@@ -75,7 +108,7 @@ async function fetchGreenhouse(company: string): Promise<Listing[]> {
     if (!res.ok) return [];
     // deno-lint-ignore no-explicit-any
     const data: any = await res.json();
-    return (data.jobs ?? [])
+    const jobs: Listing[] = (data.jobs ?? [])
       .filter((j: any) => isInternship(j.title))
       .map((j: any): Listing => ({
         title:      j.title,
@@ -88,6 +121,20 @@ async function fetchGreenhouse(company: string): Promise<Listing[]> {
         posted_at:  j.updated_at ? j.updated_at.split('T')[0] : null,
         updated_at: new Date().toISOString(),
       }));
+
+    // Enrich jobs that still lack pay by fetching individual job details
+    const unpaid = jobs.filter(j => !j.pay);
+    const CONCURRENCY = 5;
+    for (let i = 0; i < unpaid.length; i += CONCURRENCY) {
+      await Promise.all(unpaid.slice(i, i + CONCURRENCY).map(async (job) => {
+        const idMatch = job.url.match(/\/jobs\/(\d+)/);
+        if (!idMatch) return;
+        const pay = await fetchGreenhouseJobPay(company, parseInt(idMatch[1]));
+        if (pay) job.pay = pay;
+      }));
+    }
+
+    return jobs;
   } catch {
     return [];
   }
