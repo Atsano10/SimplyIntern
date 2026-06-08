@@ -61,7 +61,21 @@ const GREENHOUSE_COMPANIES = [
   'workato', 'toast', 'ripple', 'block', 'point72', 'virtu', 'verkada',
 ];
 
-const PAY_RE = /\$[\d,]+(?:\.\d{2})?(?:\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?)?(?:\s*(?:per|\/)\s*(?:hr|hour|yr|year|mo|month|week|wk))?/i;
+// Negative lookbehind on the $ avoids foreign currencies like "R$3.000" (BRL).
+const PAY_RE = /(?<![A-Za-z])\$\s?[\d,]{2,}(?:\.\d{2})?(?:\s*(?:[-–—]|to)\s*\$?\s?[\d,]{2,}(?:\.\d{2})?)?(?:\s*(?:per|\/)\s*(?:hr|hour|yr|year|mo|month|week|wk))?/i;
+
+// Greenhouse content arrives HTML-entity-encoded (e.g. "&lt;span&gt;"), so we
+// must decode entities before stripping tags or the pay block stays hidden.
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&amp;/g, '&');
+}
 
 // Accept a match only if it looks like real compensation (a thousands comma,
 // a per-unit suffix, or a range) so we don't surface garbage like "$3.000".
@@ -70,17 +84,14 @@ function validatePay(val: string | null): string | null {
   const v = val.trim();
   const hasComma = /,/.test(v);
   const hasUnit  = /(per|\/)\s*(hr|hour|yr|year|mo|month|week|wk)/i.test(v);
-  const isRange  = /[-–—]/.test(v);
+  const isRange  = /[-–—]|to/.test(v);
   return (hasComma || hasUnit || isRange) ? v : null;
 }
 
 function extractPayFromHtml(html: string): string | null {
   if (!html) return null;
-  const text = html
+  const text = decodeEntities(html)
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&#\d+;/g, '')
     .replace(/\s+/g, ' ');
   const m = text.match(PAY_RE);
   return validatePay(m ? m[0] : null);
@@ -89,17 +100,20 @@ function extractPayFromHtml(html: string): string | null {
 function extractGreenhousePay(job: any): string | null {
   // Some companies configure a pay/salary metadata field on their Greenhouse board
   for (const meta of (job.metadata ?? [])) {
-    if (!meta.name || !meta.value) continue;
+    if (!meta.name || meta.value == null) continue;
+    // value can be an object/array for some field types — skip those
+    if (typeof meta.value !== 'string' && typeof meta.value !== 'number') continue;
     const name = meta.name.toLowerCase();
     if (['pay', 'salary', 'compensation', 'wage', 'rate', 'stipend'].some(k => name.includes(k))) {
-      return String(meta.value).trim();
+      const val = validatePay(String(meta.value));
+      if (val) return val;
     }
   }
   // Most boards embed pay in the job description HTML (a "pay-range" block)
   const fromContent = extractPayFromHtml(job.content ?? '');
   if (fromContent) return fromContent;
   // Last resort: parse a pay pattern directly from the job title e.g. "$25/hr"
-  const m = (job.title ?? '').match(PAY_RE);
+  const m = decodeEntities(job.title ?? '').match(PAY_RE);
   return validatePay(m ? m[0] : null);
 }
 
