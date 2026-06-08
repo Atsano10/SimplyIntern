@@ -66,6 +66,105 @@ body {
     border-color: #702632;
 }
 
+/* ── MULTI-SELECT FILTERS ── */
+.filter_multi {
+    position: relative;
+    flex: 1;
+    min-width: 120px;
+}
+
+.filter_multi_btn {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1.5px solid #d0b0b5;
+    border-radius: 8px;
+    background-color: #FFFFFA;
+    color: #40434E;
+    font-size: 14px;
+    font-family: 'Saira', sans-serif;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: border-color 0.2s;
+    outline: none;
+}
+
+.filter_multi_btn:hover,
+.filter_multi_btn.open {
+    border-color: #702632;
+}
+
+.filter_multi_btn.ms_active {
+    border-color: #702632;
+    color: #702632;
+    background-color: #fdf5f6;
+}
+
+.ms_label {
+    flex: 1;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ms_caret {
+    flex-shrink: 0;
+    font-size: 10px;
+    transition: transform 0.2s;
+    opacity: 0.6;
+}
+
+.filter_multi_btn.open .ms_caret {
+    transform: rotate(180deg);
+}
+
+.filter_multi_panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 190px;
+    background: #FFFFFA;
+    border: 1.5px solid #d0b0b5;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(8, 7, 5, 0.12);
+    z-index: 200;
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 6px 0;
+}
+
+.filter_multi_panel.open {
+    display: block;
+}
+
+.ms_option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #40434E;
+    font-family: 'Saira', sans-serif;
+    transition: background 0.1s;
+    user-select: none;
+}
+
+.ms_option:hover {
+    background: #f7eeef;
+}
+
+.ms_option input[type="checkbox"] {
+    accent-color: #702632;
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
 .search_btn {
     padding: 8px 24px;
     background-color: #702632;
@@ -227,6 +326,27 @@ body {
     color: #702632;
     font-size: 16px;
 }
+
+/* ── DARK MODE MULTI-SELECT ── */
+body.dark .filter_multi_btn {
+    background: #241819;
+    color: #f0e8ea;
+    border-color: #4a3035;
+}
+body.dark .filter_multi_btn:hover,
+body.dark .filter_multi_btn.open { border-color: #eeb9c2; }
+body.dark .filter_multi_btn.ms_active {
+    border-color: #eeb9c2;
+    color: #eeb9c2;
+    background: #2c1a1e;
+}
+body.dark .filter_multi_panel {
+    background: #241819;
+    border-color: #4a3035;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+body.dark .ms_option { color: #f0e8ea; }
+body.dark .ms_option:hover { background: #3a2a2c; }
 
 /* ── DARK MODE ── */
 body.dark .search_engine {

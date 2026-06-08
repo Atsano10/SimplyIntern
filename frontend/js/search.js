@@ -4,6 +4,132 @@ let currentOffset  = 0;
 let isLoading      = false;
 let hasMore        = true;
 
+// ── MULTI-SELECT ──────────────────────────────────────────────────────────────
+
+const msState = {
+  locations:  new Set(),
+  industries: new Set(),
+  jobTypes:   new Set(),
+};
+
+// Maps country/region name → array of ilike substrings to match against location field
+const locationPatternMap = {};
+
+function msInit(id, stateKey, items) {
+  const panel = document.getElementById(id + '_panel');
+  items.forEach(({ value, label }) => {
+    const lbl = document.createElement('label');
+    lbl.className = 'ms_option';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = value;
+    cb.addEventListener('change', () => {
+      msState[stateKey][cb.checked ? 'add' : 'delete'](value);
+      msRefresh(id, stateKey);
+    });
+    lbl.append(cb, document.createTextNode(' ' + label));
+    panel.appendChild(lbl);
+  });
+}
+
+function msRefresh(id, stateKey) {
+  const btn = document.getElementById(id + '_btn');
+  const set = msState[stateKey];
+  const lbl = btn.querySelector('.ms_label');
+  if (set.size === 0) {
+    lbl.textContent = btn.dataset.all;
+    btn.classList.remove('ms_active');
+  } else {
+    const vals = [...set];
+    lbl.textContent = vals.length <= 2 ? vals.join(', ') : `${vals.length} selected`;
+    btn.classList.add('ms_active');
+  }
+}
+
+function msToggle(id) {
+  const panel  = document.getElementById(id + '_panel');
+  const btn    = document.getElementById(id + '_btn');
+  const isOpen = panel.classList.contains('open');
+  document.querySelectorAll('.filter_multi_panel.open').forEach(p => p.classList.remove('open'));
+  document.querySelectorAll('.filter_multi_btn.open').forEach(b => b.classList.remove('open'));
+  if (!isOpen) {
+    panel.classList.add('open');
+    btn.classList.add('open');
+  }
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.filter_multi')) {
+    document.querySelectorAll('.filter_multi_panel.open').forEach(p => p.classList.remove('open'));
+    document.querySelectorAll('.filter_multi_btn.open').forEach(b => b.classList.remove('open'));
+  }
+});
+
+// ── LOCATION LOADING ──────────────────────────────────────────────────────────
+
+function locToCountry(loc) {
+  const s = (loc || '').trim();
+  if (!s) return null;
+  if (/\bremote\b/i.test(s)) return 'Remote';
+  // US: "City, ST" ends with 2-letter state code
+  if (/,\s*[A-Z]{2}\s*$/.test(s)) return 'United States';
+  // "City, Country" — last comma segment
+  const parts = s.split(',');
+  if (parts.length >= 2) {
+    const last = parts[parts.length - 1].trim();
+    if (/^[A-Z]{2}$/.test(last)) return 'United States'; // state code fallback
+    return last;
+  }
+  return s;
+}
+
+async function loadLocationFilter() {
+  try {
+    const { data } = await client
+      .from('listings')
+      .select('location')
+      .not('location', 'is', null)
+      .limit(2000);
+
+    const cpMap = {};
+    (data || []).forEach(row => {
+      const loc = (row.location || '').trim();
+      if (!loc) return;
+      const country = locToCountry(loc);
+      if (!country) return;
+      if (!cpMap[country]) cpMap[country] = new Set();
+
+      if (/\bremote\b/i.test(loc)) {
+        cpMap[country].add('remote');
+      } else {
+        const m = loc.match(/,\s*([A-Z]{2})\s*$/);
+        if (m) {
+          cpMap[country].add(`, ${m[1]}`); // ", NY", ", CA" etc.
+        } else {
+          // For international, match on the country name itself
+          const parts = loc.split(',');
+          cpMap[country].add(parts[parts.length - 1].trim());
+        }
+      }
+    });
+
+    Object.keys(cpMap).forEach(c => { locationPatternMap[c] = [...cpMap[c]]; });
+  } catch {
+    locationPatternMap['Remote']        = ['remote'];
+    locationPatternMap['United States'] = [', NY', ', CA', ', IL', ', MA', ', WA', ', TX'];
+  }
+
+  const countries = Object.keys(locationPatternMap).sort((a, b) => {
+    if (a === 'Remote') return -1;
+    if (b === 'Remote') return 1;
+    return a.localeCompare(b);
+  });
+
+  msInit('ms_location', 'locations', countries.map(c => ({ value: c, label: c })));
+}
+
+// ── SEARCH ────────────────────────────────────────────────────────────────────
+
 document.getElementById('search_btn').addEventListener('click', performSearch);
 document.getElementById('search_input').addEventListener('keydown', e => {
   if (e.key === 'Enter') performSearch();
@@ -19,11 +145,14 @@ window.addEventListener('scroll', () => {
 async function performSearch() {
   document.getElementById('empty_state').style.display = 'none';
 
+  // Expand selected countries into ilike patterns
+  const locationPatterns = [...msState.locations].flatMap(c => locationPatternMap[c] || [c]);
+
   currentFilters = {
-    keyword:  document.getElementById('search_input').value.trim(),
-    location: document.getElementById('filter_location').value,
-    industry: document.getElementById('filter_industry').value,
-    jobType:  document.getElementById('filter_type').value,
+    keyword:          document.getElementById('search_input').value.trim(),
+    locationPatterns,
+    industries:       [...msState.industries],
+    jobTypes:         [...msState.jobTypes],
   };
   currentOffset = 0;
   hasMore       = true;
@@ -111,7 +240,6 @@ function renderResults(jobs, append) {
   jobList.appendChild(fragment);
 }
 
-// Prevents XSS — always escape user-supplied or external data before injecting into HTML
 function esc(str) {
   if (!str) return '';
   return String(str)
@@ -158,3 +286,22 @@ async function markApplied(btn) {
   btn.classList.add('applied');
   btn.disabled = true;
 }
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+
+msInit('ms_industry', 'industries', [
+  { value: 'tech',      label: 'Technology' },
+  { value: 'medical',   label: 'Healthcare / Medical' },
+  { value: 'finance',   label: 'Finance / Business' },
+  { value: 'marketing', label: 'Marketing / Comms' },
+  { value: 'legal',     label: 'Legal / Compliance' },
+  { value: 'research',  label: 'Science / Research' },
+]);
+
+msInit('ms_type', 'jobTypes', [
+  { value: 'internship',  label: 'Internship' },
+  { value: 'co-op',       label: 'Co-op' },
+  { value: 'externship',  label: 'Externship' },
+]);
+
+loadLocationFilter();

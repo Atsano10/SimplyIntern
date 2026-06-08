@@ -16,19 +16,20 @@ async function fetchJobs(filters = {}, offset = 0, limit = 50) {
     );
   }
 
-  if (filters.location) {
-    query = query.ilike('location', `%${filters.location}%`);
-  }
-
-  if (filters.industry && INDUSTRY_KEYWORDS[filters.industry]) {
-    const orClauses = INDUSTRY_KEYWORDS[filters.industry]
-      .map(k => `title.ilike.%${k}%`)
-      .join(',');
+  if (filters.locationPatterns && filters.locationPatterns.length > 0) {
+    const orClauses = filters.locationPatterns.map(p => `location.ilike.%${p}%`).join(',');
     query = query.or(orClauses);
   }
 
-  if (filters.jobType) {
-    query = query.eq('type', filters.jobType);
+  if (filters.industries && filters.industries.length > 0) {
+    const kws = filters.industries.flatMap(ind => INDUSTRY_KEYWORDS[ind] || []);
+    if (kws.length > 0) {
+      query = query.or(kws.map(k => `title.ilike.%${k}%`).join(','));
+    }
+  }
+
+  if (filters.jobTypes && filters.jobTypes.length > 0) {
+    query = query.in('type', filters.jobTypes);
   }
 
   const { data, error } = await query

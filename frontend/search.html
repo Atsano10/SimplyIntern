@@ -21,33 +21,30 @@
       <div class="search_engine">
         <input type="text" id="search_input" class="search_input" placeholder="Search internships, companies, or roles..." />
         <div class="search_filters">
-          <select class="filter_dropdown" id="filter_location">
-            <option value="">All Locations</option>
-            <option value="Remote">Remote</option>
-            <option value="New York">New York, NY</option>
-            <option value="San Francisco">San Francisco, CA</option>
-            <option value="Los Angeles">Los Angeles, CA</option>
-            <option value="Chicago">Chicago, IL</option>
-            <option value="Boston">Boston, MA</option>
-            <option value="Seattle">Seattle, WA</option>
-            <option value="Austin">Austin, TX</option>
-            <option value="Washington">Washington, DC</option>
-          </select>
-          <select class="filter_dropdown" id="filter_industry">
-            <option value="">All Industries</option>
-            <option value="tech">Technology</option>
-            <option value="medical">Healthcare / Medical</option>
-            <option value="finance">Finance / Business</option>
-            <option value="marketing">Marketing / Comms</option>
-            <option value="legal">Legal / Compliance</option>
-            <option value="research">Science / Research</option>
-          </select>
-          <select class="filter_dropdown" id="filter_type">
-            <option value="">All Types</option>
-            <option value="internship">Internship</option>
-            <option value="co-op">Co-op</option>
-            <option value="externship">Externship</option>
-          </select>
+          <div class="filter_multi">
+            <button type="button" class="filter_multi_btn" id="ms_location_btn"
+                    data-all="All Locations" onclick="msToggle('ms_location')">
+              <span class="ms_label">All Locations</span>
+              <span class="ms_caret">▾</span>
+            </button>
+            <div class="filter_multi_panel" id="ms_location_panel"></div>
+          </div>
+          <div class="filter_multi">
+            <button type="button" class="filter_multi_btn" id="ms_industry_btn"
+                    data-all="All Industries" onclick="msToggle('ms_industry')">
+              <span class="ms_label">All Industries</span>
+              <span class="ms_caret">▾</span>
+            </button>
+            <div class="filter_multi_panel" id="ms_industry_panel"></div>
+          </div>
+          <div class="filter_multi">
+            <button type="button" class="filter_multi_btn" id="ms_type_btn"
+                    data-all="All Types" onclick="msToggle('ms_type')">
+              <span class="ms_label">All Types</span>
+              <span class="ms_caret">▾</span>
+            </button>
+            <div class="filter_multi_panel" id="ms_type_panel"></div>
+          </div>
           <button class="search_btn" id="search_btn">Search</button>
         </div>
       </div>
