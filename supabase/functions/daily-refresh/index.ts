@@ -99,6 +99,7 @@ const GITHUB_REPOS = [
   { owner: 'pittcsc',      repo: 'Summer2026-Internships' },
   { owner: 'SimplifyJobs', repo: 'Summer2026-Internships' },
   { owner: 'ouckah',       repo: 'Summer2026-Internships' },
+  { owner: 'vanshb03',     repo: 'Summer2027-Internships' },
 ];
 
 function parseMarkdownTable(content: string): Listing[] {
