@@ -45,6 +45,8 @@ const GREENHOUSE_COMPANIES = [
   'grammarly', 'loom', 'deel', 'dropbox', 'okta',
   'gitlab', 'mozilla', 'clickup', 'miro', 'pendo',
   'fullstory', 'heap', 'segment', 'brainstation', 'workato',
+  // Verified active internship posters
+  'toast', 'ripple', 'block', 'point72', 'virtu', 'verkada',
 ];
 
 function extractGreenhousePay(job: any): string | null {
@@ -83,107 +85,6 @@ async function fetchGreenhouse(company: string): Promise<Listing[]> {
         posted_at:  j.updated_at ? j.updated_at.split('T')[0] : null,
         updated_at: new Date().toISOString(),
       }));
-  } catch {
-    return [];
-  }
-}
-
-// ─── Lever ───────────────────────────────────────────────────────────────────
-
-const LEVER_COMPANIES = [
-  'netflix', 'reddit', 'twitch', 'coursera', 'khanacademy',
-  'descript', 'faire', 'checkr', 'gem', 'outreach',
-  'persona', 'ironclad', 'nerdwallet', 'seatgeek', 'betterment',
-  'carta', 'addepar', 'blend', 'unit', 'plaid',
-];
-
-function extractLeverPay(job: any): string | null {
-  if (!job.salaryRange) return null;
-  const { currency = '$', min, max, interval } = job.salaryRange;
-  const suffix = interval ? `/${interval.replace('per-', '')}` : '';
-  if (min && max) return `${currency}${Number(min).toLocaleString()}–${currency}${Number(max).toLocaleString()}${suffix}`;
-  if (min)        return `${currency}${Number(min).toLocaleString()}+${suffix}`;
-  return null;
-}
-
-async function fetchLever(company: string): Promise<Listing[]> {
-  try {
-    const res = await fetch(
-      `https://api.lever.co/v0/postings/${company}?mode=json`,
-      { signal: AbortSignal.timeout(8000) }
-    );
-    if (!res.ok) return [];
-    // deno-lint-ignore no-explicit-any
-    const data: any = await res.json();
-    if (!Array.isArray(data)) return [];
-    return data
-      .filter((j: any) => isInternship(j.text ?? '') || isInternship(j.categories?.commitment ?? ''))
-      .map((j: any): Listing => ({
-        title:      j.text ?? 'Untitled',
-        company:    capitalize(company),
-        location:   j.categories?.location ?? null,
-        pay:        extractLeverPay(j),
-        type:       getType(j.text ?? ''),
-        url:        j.hostedUrl ?? '',
-        source:     'lever',
-        posted_at:  j.createdAt ? new Date(j.createdAt).toISOString().split('T')[0] : null,
-        updated_at: new Date().toISOString(),
-      }))
-      .filter((j: Listing) => Boolean(j.url));
-  } catch {
-    return [];
-  }
-}
-
-// ─── Ashby ───────────────────────────────────────────────────────────────────
-
-const ASHBY_COMPANIES = [
-  'openai', 'anthropic', 'replit', 'cohere', 'together',
-  'modal', 'braintrust', 'cursor', 'perplexity', 'posthog',
-  'anyscale', 'prefect', 'codeium', 'supabase', 'linear',
-  'vercel', 'netlify', 'loom', 'descript', 'planetscale',
-];
-
-function extractAshbyPay(job: any): string | null {
-  const comp = job.compensation;
-  if (!comp) return null;
-  const { min, max, currency = 'USD', interval } = comp;
-  if (!min && !max) return null;
-  const sym = currency === 'USD' ? '$' : currency;
-  const suffix = interval ? `/${interval.toLowerCase().replace('ly', '').replace('per-', '')}` : '';
-  if (min && max) return `${sym}${Number(min).toLocaleString()}–${sym}${Number(max).toLocaleString()}${suffix}`;
-  return `${sym}${Number(min || max).toLocaleString()}${suffix}`;
-}
-
-async function fetchAshby(company: string): Promise<Listing[]> {
-  try {
-    const res = await fetch(
-      'https://api.ashbyhq.com/posting-public/job/list',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ organizationHostedJobsPageName: company }),
-        signal: AbortSignal.timeout(8000),
-      }
-    );
-    if (!res.ok) return [];
-    // deno-lint-ignore no-explicit-any
-    const data: any = await res.json();
-    if (!data.success || !Array.isArray(data.results)) return [];
-    return data.results
-      .filter((j: any) => j.isListed && (isInternship(j.title ?? '') || j.employmentType === 'Intern'))
-      .map((j: any): Listing => ({
-        title:      j.title ?? 'Untitled',
-        company:    capitalize(company),
-        location:   j.locationName ?? null,
-        pay:        extractAshbyPay(j),
-        type:       j.employmentType === 'Intern' ? 'internship' : getType(j.title ?? ''),
-        url:        j.jobUrl ?? '',
-        source:     'ashby',
-        posted_at:  j.publishedDate ? j.publishedDate.split('T')[0] : null,
-        updated_at: new Date().toISOString(),
-      }))
-      .filter((j: Listing) => Boolean(j.url));
   } catch {
     return [];
   }
@@ -269,17 +170,13 @@ Deno.serve(async (_req: Request) => {
   const githubToken = Deno.env.get('GITHUB_TOKEN');
 
   // Fetch all sources in parallel
-  const [ghResults, leverResults, ashbyResults, gitResults] = await Promise.all([
+  const [ghResults, gitResults] = await Promise.all([
     Promise.all(GREENHOUSE_COMPANIES.map(fetchGreenhouse)),
-    Promise.all(LEVER_COMPANIES.map(fetchLever)),
-    Promise.all(ASHBY_COMPANIES.map(fetchAshby)),
     Promise.all(GITHUB_REPOS.map(({ owner, repo }) => fetchGithubRepo(owner, repo, githubToken))),
   ]);
 
   const allJobs: Listing[] = [
     ...ghResults.flat(),
-    ...leverResults.flat(),
-    ...ashbyResults.flat(),
     ...gitResults.flat(),
   ];
 
