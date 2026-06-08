@@ -23,27 +23,30 @@
         <div class="search_filters">
           <select class="filter_dropdown" id="filter_location">
             <option value="">Location</option>
-            <option>Remote</option>
-            <option>New York, NY</option>
-            <option>San Francisco, CA</option>
-            <option>Chicago, IL</option>
-            <option>Boston, MA</option>
-            <option>Seattle, WA</option>
-            <option>Austin, TX</option>
+            <option value="Remote">Remote</option>
+            <option value="New York">New York, NY</option>
+            <option value="San Francisco">San Francisco, CA</option>
+            <option value="Los Angeles">Los Angeles, CA</option>
+            <option value="Chicago">Chicago, IL</option>
+            <option value="Boston">Boston, MA</option>
+            <option value="Seattle">Seattle, WA</option>
+            <option value="Austin">Austin, TX</option>
+            <option value="Washington">Washington, DC</option>
+          </select>
+          <select class="filter_dropdown" id="filter_industry">
+            <option value="">Industry</option>
+            <option value="tech">Technology</option>
+            <option value="medical">Healthcare / Medical</option>
+            <option value="finance">Finance / Business</option>
+            <option value="marketing">Marketing / Comms</option>
+            <option value="legal">Legal / Compliance</option>
+            <option value="research">Science / Research</option>
           </select>
           <select class="filter_dropdown" id="filter_type">
-            <option value="">Job Type</option>
+            <option value="">Program Type</option>
             <option value="internship">Internship</option>
             <option value="co-op">Co-op</option>
             <option value="externship">Externship</option>
-          </select>
-          <select class="filter_dropdown" id="filter_pay">
-            <option value="">Pay Rate</option>
-            <option>Unpaid</option>
-            <option>$10 – $15 / hr</option>
-            <option>$15 – $20 / hr</option>
-            <option>$20 – $30 / hr</option>
-            <option>$30+ / hr</option>
           </select>
           <button class="search_btn" id="search_btn">Search</button>
         </div>

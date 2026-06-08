@@ -22,6 +22,7 @@ async function performSearch() {
   currentFilters = {
     keyword:  document.getElementById('search_input').value.trim(),
     location: document.getElementById('filter_location').value,
+    industry: document.getElementById('filter_industry').value,
     jobType:  document.getElementById('filter_type').value,
   };
   currentOffset = 0;

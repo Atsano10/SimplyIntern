@@ -286,18 +286,18 @@ body.dark .no_results { color: #eeb9c2; }
         gap: 10px;
     }
 
-    .right_jobs {
+    .center_jobs {
         order: 2;
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .right_jobs {
+        order: 3;
         flex-direction: row;
         align-items: center;
         justify-content: space-between;
         width: 100%;
-    }
-
-    .center_jobs {
-        order: 3;
-        width: 100%;
-        justify-content: stretch;
     }
 
     .apply_btn {
