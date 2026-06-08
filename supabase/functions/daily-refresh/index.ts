@@ -122,8 +122,8 @@ function parseMarkdownTable(content: string): Listing[] {
     const url = mdLink?.[1] ?? htmlLink?.[1];
     if (!url) continue;
 
-    const role     = roleRaw.replace(/[*_`[\]🔒✅❌]/g, '').trim();
-    const company  = companyRaw.replace(/[*_`[\]]/g, '').trim();
+    const role     = roleRaw.replace(/[*_`[\]🔒✅❌🛂🎓]/g, '').trim();
+    const company  = companyRaw.replace(/[*_`[\]🔥]/g, '').trim();
     const location = locationRaw.replace(/[*_`[\]]/g, '').trim();
 
     if (!role || !company || !isInternship(role)) continue;
