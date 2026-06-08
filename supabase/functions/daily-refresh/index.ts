@@ -52,6 +52,31 @@ const GREENHOUSE_COMPANIES = [
   'workato', 'toast', 'ripple', 'block', 'point72', 'virtu', 'verkada',
 ];
 
+const PAY_RE = /\$[\d,]+(?:\.\d{2})?(?:\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?)?(?:\s*(?:per|\/)\s*(?:hr|hour|yr|year|mo|month|week|wk))?/i;
+
+// Accept a match only if it looks like real compensation (a thousands comma,
+// a per-unit suffix, or a range) so we don't surface garbage like "$3.000".
+function validatePay(val: string | null): string | null {
+  if (!val) return null;
+  const v = val.trim();
+  const hasComma = /,/.test(v);
+  const hasUnit  = /(per|\/)\s*(hr|hour|yr|year|mo|month|week|wk)/i.test(v);
+  const isRange  = /[-–—]/.test(v);
+  return (hasComma || hasUnit || isRange) ? v : null;
+}
+
+function extractPayFromHtml(html: string): string | null {
+  if (!html) return null;
+  const text = html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&#\d+;/g, '')
+    .replace(/\s+/g, ' ');
+  const m = text.match(PAY_RE);
+  return validatePay(m ? m[0] : null);
+}
+
 function extractGreenhousePay(job: any): string | null {
   // Some companies configure a pay/salary metadata field on their Greenhouse board
   for (const meta of (job.metadata ?? [])) {
@@ -61,54 +86,26 @@ function extractGreenhousePay(job: any): string | null {
       return String(meta.value).trim();
     }
   }
-  // Fallback: parse a pay pattern directly from the job title e.g. "$25/hr"
-  const m = (job.title ?? '').match(/\$[\d,]+(?:\s*[-–]\s*\$[\d,]+)?(?:\s*\/\s*(?:hr|hour|yr|year|mo|month))?/i);
-  return m ? m[0] : null;
-}
-
-function extractPayFromHtml(html: string): string | null {
-  const text = html
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&#\d+;/g, '')
-    .replace(/\s+/g, ' ');
-  const m = text.match(/\$[\d,]+(?:\.\d+)?(?:\s*[-–]\s*\$[\d,]+(?:\.\d+)?)?(?:\s*(?:per|\/)\s*(?:hr|hour|yr|year|mo|month|week|wk))?/i);
-  return m ? m[0].trim() : null;
-}
-
-async function fetchGreenhouseJobPay(company: string, jobId: number): Promise<string | null> {
-  try {
-    const res = await fetch(
-      `https://boards-api.greenhouse.io/v1/boards/${company}/jobs/${jobId}`,
-      { signal: AbortSignal.timeout(3000) }
-    );
-    if (!res.ok) return null;
-    // deno-lint-ignore no-explicit-any
-    const data: any = await res.json();
-    for (const meta of (data.metadata ?? [])) {
-      if (!meta.name || !meta.value) continue;
-      const name = meta.name.toLowerCase();
-      if (['pay', 'salary', 'compensation', 'wage', 'rate', 'stipend'].some(k => name.includes(k))) {
-        return String(meta.value).trim();
-      }
-    }
-    return data.content ? extractPayFromHtml(data.content) : null;
-  } catch {
-    return null;
-  }
+  // Most boards embed pay in the job description HTML (a "pay-range" block)
+  const fromContent = extractPayFromHtml(job.content ?? '');
+  if (fromContent) return fromContent;
+  // Last resort: parse a pay pattern directly from the job title e.g. "$25/hr"
+  const m = (job.title ?? '').match(PAY_RE);
+  return validatePay(m ? m[0] : null);
 }
 
 async function fetchGreenhouse(company: string): Promise<Listing[]> {
   try {
+    // ?content=true returns each job's full description inline, so we can pull
+    // pay from the embedded "pay-range" block without a per-job follow-up fetch.
     const res = await fetch(
-      `https://boards-api.greenhouse.io/v1/boards/${company}/jobs`,
-      { signal: AbortSignal.timeout(8000) }
+      `https://boards-api.greenhouse.io/v1/boards/${company}/jobs?content=true`,
+      { signal: AbortSignal.timeout(10000) }
     );
     if (!res.ok) return [];
     // deno-lint-ignore no-explicit-any
     const data: any = await res.json();
-    const jobs: Listing[] = (data.jobs ?? [])
+    return (data.jobs ?? [])
       .filter((j: any) => isInternship(j.title))
       .map((j: any): Listing => ({
         title:      j.title,
@@ -121,20 +118,6 @@ async function fetchGreenhouse(company: string): Promise<Listing[]> {
         posted_at:  j.updated_at ? j.updated_at.split('T')[0] : null,
         updated_at: new Date().toISOString(),
       }));
-
-    // Enrich jobs that still lack pay by fetching individual job details
-    const unpaid = jobs.filter(j => !j.pay);
-    const CONCURRENCY = 5;
-    for (let i = 0; i < unpaid.length; i += CONCURRENCY) {
-      await Promise.all(unpaid.slice(i, i + CONCURRENCY).map(async (job) => {
-        const idMatch = job.url.match(/\/jobs\/(\d+)/);
-        if (!idMatch) return;
-        const pay = await fetchGreenhouseJobPay(company, parseInt(idMatch[1]));
-        if (pay) job.pay = pay;
-      }));
-    }
-
-    return jobs;
   } catch {
     return [];
   }
