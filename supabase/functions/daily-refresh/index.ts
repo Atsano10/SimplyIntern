@@ -29,6 +29,15 @@ function getType(title: string): string {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+async function mapPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += limit) {
+    const batch = items.slice(i, i + limit);
+    results.push(...await Promise.all(batch.map(fn)));
+  }
+  return results;
+}
+
 // ─── Greenhouse ──────────────────────────────────────────────────────────────
 
 const GREENHOUSE_COMPANIES = [
@@ -203,9 +212,10 @@ Deno.serve(async (_req: Request) => {
   );
   const githubToken = Deno.env.get('GITHUB_TOKEN');
 
-  // Fetch all sources in parallel
+  // Fetch all sources. Greenhouse runs in small batches (bounded concurrency)
+  // because ?content=true payloads are large; GitHub repos are few, so parallel.
   const [ghResults, gitResults] = await Promise.all([
-    Promise.all(GREENHOUSE_COMPANIES.map(fetchGreenhouse)),
+    mapPool(GREENHOUSE_COMPANIES, 4, fetchGreenhouse),
     Promise.all(GITHUB_REPOS.map(({ owner, repo }) => fetchGithubRepo(owner, repo, githubToken))),
   ]);
 
