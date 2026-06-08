@@ -16,7 +16,7 @@ interface Listing {
 
 // ─── Classification helpers ──────────────────────────────────────────────────
 
-const INTERN_RE = /\b(intern|internship|co-op|coop|co\s+op|externship|extern)\b/i;
+const INTERN_RE = /\b(intern|internship|co-op|coop|co\s+op|externship|extern|summer|winter)\b/i;
 
 const isInternship = (text: string) => INTERN_RE.test(text);
 
