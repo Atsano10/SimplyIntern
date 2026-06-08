@@ -41,7 +41,6 @@ const GREENHOUSE_COMPANIES = [
   'feverup', 'superhuman', 'aeg', 'rocketlabusa', 'hasbro', 'appier', 'dept',
   'sezzle', 'hunterdouglas', 'unity', 'dialectica', 'mirakl', 'bybit',
   'rocket', 'casetify', 'sanmar', 'pacvue', 'xpeng',
-  // Well-known companies with active Greenhouse boards
   'stripe', 'figma', 'notion', 'discord', 'lyft', 'pinterest', 'mongodb',
   'brex', 'plaid', 'ramp', 'airtable', 'retool', 'gusto', 'rippling',
   'amplitude', 'hashicorp', 'confluent', 'scaleai', 'mercury', 'webflow',
