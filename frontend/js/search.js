@@ -257,7 +257,7 @@ async function markApplied(btn) {
     company:  btn.dataset.company,
     location: btn.dataset.location,
     pay:      btn.dataset.pay || 'Not listed',
-    status:   'Applied',
+    status:   'Pending',
     notes:    '',
   };
 

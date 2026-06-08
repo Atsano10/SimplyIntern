@@ -1,10 +1,10 @@
 const INDUSTRY_KEYWORDS = {
-  tech:     ['software', 'engineering', 'developer', 'data', 'cybersecurity', 'technology', 'machine learning', 'cloud', 'web', 'mobile', 'IT', 'programming', 'devops', 'AI'],
-  medical:  ['medical', 'healthcare', 'clinical', 'nursing', 'pharmacy', 'hospital', 'biomedical', 'pharmaceutical', 'health'],
-  finance:  ['finance', 'accounting', 'investment', 'banking', 'financial', 'analyst', 'trading', 'wealth', 'fintech'],
-  marketing:['marketing', 'advertising', 'brand', 'social media', 'communications', 'PR', 'public relations', 'digital marketing', 'content'],
-  legal:    ['legal', 'law', 'compliance', 'paralegal', 'regulatory', 'attorney', 'policy'],
-  research: ['research', 'science', 'laboratory', 'biology', 'chemistry', 'physics', 'ecology', 'neuroscience', 'genomics'],
+  tech:     ['software', 'developer', 'cybersecurity', 'technology', 'machine learning', 'programming', 'devops', 'computer science', 'data science', 'artificial intelligence', 'full stack', 'backend', 'frontend', 'systems engineer'],
+  medical:  ['medical', 'healthcare', 'clinical', 'nursing', 'pharmacy', 'hospital', 'biomedical', 'pharmaceutical', 'public health'],
+  finance:  ['finance', 'accounting', 'investment', 'banking', 'financial analyst', 'trading', 'wealth management', 'fintech', 'actuarial'],
+  marketing:['marketing', 'advertising', 'public relations', 'communications', 'social media', 'digital marketing', 'content strategy', 'brand management'],
+  legal:    ['legal', 'compliance', 'paralegal', 'regulatory', 'attorney', 'legislative', 'law clerk'],
+  research: ['research', 'laboratory', 'biology', 'chemistry', 'physics', 'ecology', 'neuroscience', 'genomics', 'scientific research'],
 };
 
 async function fetchJobs(filters = {}, offset = 0, limit = 50) {

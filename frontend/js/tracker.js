@@ -190,21 +190,33 @@ function renderTable() {
         return;
     }
 
-    tbody.innerHTML = applications.map((app, i) => `
+    const STATUS_CLASS = {
+        'Pending':             'Pending',
+        'Applied':             'Applied',       // backward compat
+        'Interview':           'Interview',     // backward compat
+        '1st Round Interview': 'Interview1',
+        '2nd Round Interview': 'Interview2',
+        'Accepted':            'Accepted',
+        'Rejected':            'Rejected',
+    };
+
+    tbody.innerHTML = applications.map((app, i) => {
+        const cls = STATUS_CLASS[app.status] || 'Pending';
+        return `
         <tr>
             <td>${app.position}</td>
             <td>${app.company}</td>
             <td>${app.location || '—'}</td>
             <td>${app.pay || '—'}</td>
             <td>${formatDate(app.date_applied)}</td>
-            <td><span class="status_badge ${app.status}">${app.status}</span></td>
+            <td><span class="status_badge ${cls}">${app.status}</span></td>
             <td>${app.notes || '—'}</td>
             <td class="row_actions">
                 <button class="row_edit" onclick="openModal(${i})" title="Edit">&#9998;</button>
                 <button class="row_delete" onclick="deleteApp(${i})" title="Remove">&#10005;</button>
             </td>
-        </tr>
-    `).join('');
+        </tr>`;
+    }).join('');
 
     updateStats();
 }
@@ -218,7 +230,7 @@ function formatDate(dateStr) {
 function updateStats() {
     document.getElementById('stat_total').textContent = applications.length;
     document.getElementById('stat_pending').textContent =
-        applications.filter(a => ['Pending', 'Applied', 'Interview'].includes(a.status)).length;
+        applications.filter(a => ['Pending', 'Applied', 'Interview', '1st Round Interview', '2nd Round Interview'].includes(a.status)).length;
     document.getElementById('stat_rejected').textContent =
         applications.filter(a => a.status === 'Rejected').length;
     document.getElementById('stat_accepted').textContent =

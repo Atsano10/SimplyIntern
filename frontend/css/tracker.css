@@ -139,11 +139,13 @@ body {
     font-weight: 600;
 }
 
-.status_badge.Pending   { background: #fff3cd; color: #856404; }
-.status_badge.Applied   { background: #d1e7f5; color: #0a5a8a; }
-.status_badge.Interview { background: #e2d9f3; color: #5a3e8a; }
-.status_badge.Accepted  { background: #d1f3e0; color: #1a6b3a; }
-.status_badge.Rejected  { background: #f8d7da; color: #842029; }
+.status_badge.Pending    { background: #fff3cd; color: #856404; }
+.status_badge.Applied    { background: #d1e7f5; color: #0a5a8a; } /* backward compat */
+.status_badge.Interview  { background: #e2d9f3; color: #5a3e8a; } /* backward compat */
+.status_badge.Interview1 { background: #e2d9f3; color: #5a3e8a; }
+.status_badge.Interview2 { background: #cfe0f5; color: #1a4d8a; }
+.status_badge.Accepted   { background: #d1f3e0; color: #1a6b3a; }
+.status_badge.Rejected   { background: #f8d7da; color: #842029; }
 
 .table_empty {
     text-align: center;
