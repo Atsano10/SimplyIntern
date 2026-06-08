@@ -146,6 +146,60 @@ async function fetchLever(company: string): Promise<Listing[]> {
   }
 }
 
+// ─── Ashby ───────────────────────────────────────────────────────────────────
+
+const ASHBY_COMPANIES = [
+  'openai', 'anthropic', 'replit', 'cohere', 'together',
+  'modal', 'braintrust', 'cursor', 'perplexity', 'posthog',
+  'anyscale', 'prefect', 'codeium', 'supabase', 'linear',
+  'vercel', 'netlify', 'loom', 'descript', 'planetscale',
+];
+
+function extractAshbyPay(job: any): string | null {
+  const comp = job.compensation;
+  if (!comp) return null;
+  const { min, max, currency = 'USD', interval } = comp;
+  if (!min && !max) return null;
+  const sym = currency === 'USD' ? '$' : currency;
+  const suffix = interval ? `/${interval.toLowerCase().replace('ly', '').replace('per-', '')}` : '';
+  if (min && max) return `${sym}${Number(min).toLocaleString()}–${sym}${Number(max).toLocaleString()}${suffix}`;
+  return `${sym}${Number(min || max).toLocaleString()}${suffix}`;
+}
+
+async function fetchAshby(company: string): Promise<Listing[]> {
+  try {
+    const res = await fetch(
+      'https://api.ashbyhq.com/posting-public/job/list',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationHostedJobsPageName: company }),
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+    if (!res.ok) return [];
+    // deno-lint-ignore no-explicit-any
+    const data: any = await res.json();
+    if (!data.success || !Array.isArray(data.results)) return [];
+    return data.results
+      .filter((j: any) => j.isListed && (isInternship(j.title ?? '') || j.employmentType === 'Intern'))
+      .map((j: any): Listing => ({
+        title:      j.title ?? 'Untitled',
+        company:    capitalize(company),
+        location:   j.locationName ?? null,
+        pay:        extractAshbyPay(j),
+        type:       j.employmentType === 'Intern' ? 'internship' : getType(j.title ?? ''),
+        url:        j.jobUrl ?? '',
+        source:     'ashby',
+        posted_at:  j.publishedDate ? j.publishedDate.split('T')[0] : null,
+        updated_at: new Date().toISOString(),
+      }))
+      .filter((j: Listing) => Boolean(j.url));
+  } catch {
+    return [];
+  }
+}
+
 // ─── GitHub ──────────────────────────────────────────────────────────────────
 
 const GITHUB_REPOS = [
@@ -225,16 +279,18 @@ Deno.serve(async (_req: Request) => {
   );
   const githubToken = Deno.env.get('GITHUB_TOKEN');
 
-  // Fetch all three sources in parallel
-  const [ghResults, leverResults, gitResults] = await Promise.all([
+  // Fetch all sources in parallel
+  const [ghResults, leverResults, ashbyResults, gitResults] = await Promise.all([
     Promise.all(GREENHOUSE_COMPANIES.map(fetchGreenhouse)),
     Promise.all(LEVER_COMPANIES.map(fetchLever)),
+    Promise.all(ASHBY_COMPANIES.map(fetchAshby)),
     Promise.all(GITHUB_REPOS.map(({ owner, repo }) => fetchGithubRepo(owner, repo, githubToken))),
   ]);
 
   const allJobs: Listing[] = [
     ...ghResults.flat(),
     ...leverResults.flat(),
+    ...ashbyResults.flat(),
     ...gitResults.flat(),
   ];
 

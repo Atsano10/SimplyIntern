@@ -2,11 +2,10 @@
 // Uses the Supabase client (`client` from auth.js) to query the listings table directly —
 // this works because the listings table has a public-read RLS policy (no auth required).
 
-async function fetchJobs(filters = {}) {
+async function fetchJobs(filters = {}, offset = 0, limit = 50) {
   let query = client.from('listings').select('*');
 
   if (filters.keyword) {
-    // or() searches title AND company so "stripe engineer" finds both fields
     query = query.or(
       `title.ilike.%${filters.keyword}%,company.ilike.%${filters.keyword}%`
     );
@@ -22,7 +21,7 @@ async function fetchJobs(filters = {}) {
 
   const { data, error } = await query
     .order('posted_at', { ascending: false, nullsFirst: false })
-    .limit(150);
+    .range(offset, offset + limit - 1);
 
   if (error) throw error;
   return data ?? [];
