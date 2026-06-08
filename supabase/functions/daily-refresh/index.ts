@@ -1,13 +1,3 @@
-// Supabase Edge Function — runs on Deno (not Node.js).
-// Scheduled via config.toml — runs every 6 hours.
-//
-// Flow: fetch Greenhouse + Lever + GitHub → deduplicate by URL → upsert to listings table
-//       → delete rows not seen in 30 days (dead link cleanup)
-//
-// Required secrets (set via: supabase secrets set KEY=value):
-//   SUPABASE_SERVICE_ROLE_KEY  — allows writing to the listings table
-//   GITHUB_TOKEN               — optional, raises GitHub API rate limit from 60 to 5000/hr
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // ─── Types ───────────────────────────────────────────────────────────────────

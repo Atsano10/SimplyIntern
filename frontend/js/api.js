@@ -1,7 +1,3 @@
-// Centralizes all backend calls so search.js never talks to Supabase or /api directly.
-// Uses the Supabase client (`client` from auth.js) to query the listings table directly —
-// this works because the listings table has a public-read RLS policy (no auth required).
-
 async function fetchJobs(filters = {}, offset = 0, limit = 50) {
   let query = client.from('listings').select('*');
 

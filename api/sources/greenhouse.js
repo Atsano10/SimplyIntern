@@ -1,5 +1,3 @@
-// Companies that post public job boards on Greenhouse.
-// If a company's board is down or offline, it fails silently (try/catch per company).
 const COMPANIES = [
   'stripe', 'figma', 'notion', 'discord', 'cloudflare',
   'lyft', 'pinterest', 'mongodb', 'brex', 'plaid',

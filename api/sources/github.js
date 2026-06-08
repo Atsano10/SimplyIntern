@@ -1,5 +1,3 @@
-// Pulls curated internship lists from GitHub repos like pittcsc/Summer2026-Internships.
-// These repos maintain markdown tables — we parse them with regex since there's no JSON API.
 const REPOS = [
   { owner: 'pittcsc',      repo: 'Summer2026-Internships' },
   { owner: 'SimplifyJobs', repo: 'Summer2026-Internships' },

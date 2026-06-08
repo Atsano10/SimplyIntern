@@ -1,13 +1,3 @@
-// Vercel Serverless Function — GET /api/jobs
-//
-// Reads from the Supabase `listings` table and returns filtered results.
-// Uses the Supabase REST API directly (no npm package) so no package.json needed.
-// The listings table is populated by the daily-refresh Supabase Edge Function.
-//
-// Required env vars in Vercel dashboard:
-//   SUPABASE_URL      = https://mijakorauzqwzfffvcwb.supabase.co
-//   SUPABASE_ANON_KEY = (your anon/public key from Supabase → Settings → API)
-
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
