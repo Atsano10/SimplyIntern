@@ -31,98 +31,27 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // ─── Greenhouse ──────────────────────────────────────────────────────────────
 
-const GREENHOUSE_COMPANIES_FALLBACK = [
-  'stripe', 'figma', 'notion', 'discord', 'cloudflare',
-  'lyft', 'pinterest', 'mongodb', 'brex', 'plaid',
-  'ramp', 'airtable', 'retool', 'gusto', 'rippling',
-  'amplitude', 'hashicorp', 'confluent', 'scaleai',
-  'mercury', 'webflow', 'intercom', 'benchling', 'lattice',
-  'airbnb', 'doordash', 'instacart', 'robinhood', 'coinbase',
-  'databricks', 'duolingo', 'squarespace', 'asana', 'twilio',
-  'zendesk', 'hubspot', 'datadog', 'elastic', 'mixpanel',
-  'grammarly', 'loom', 'deel', 'dropbox', 'okta',
-  'gitlab', 'mozilla', 'clickup', 'miro', 'pendo',
-  'fullstory', 'heap', 'segment', 'brainstation', 'workato',
-  'toast', 'ripple', 'block', 'point72', 'virtu', 'verkada',
+const GREENHOUSE_COMPANIES = [
+  // From leaderboard — active Greenhouse boards with internship listings
+  'ey', 'cloudflare', 'didi', 'alo', 'thesocialhub', 'ses', 'roku', 'celonis',
+  'anymindgroup', 'munichre', 'sonypicturesentertainment', 'snowflake',
+  'revolutionmedicines', 'authenticbrands', 'internshiplist', 'asm', 'astranis',
+  'xometry', 'rocketlab', 'inter', 'neuralink', 'equipmentshare', 'lge',
+  'gallagher', 'stepstonegroup', 'fever', 'planet', 'agoda', 'sentinelone',
+  'feverup', 'superhuman', 'aeg', 'rocketlabusa', 'hasbro', 'appier', 'dept',
+  'sezzle', 'hunterdouglas', 'unity', 'dialectica', 'mirakl', 'bybit',
+  'rocket', 'casetify', 'sanmar', 'pacvue', 'xpeng',
+  // Well-known companies with active Greenhouse boards
+  'stripe', 'figma', 'notion', 'discord', 'lyft', 'pinterest', 'mongodb',
+  'brex', 'plaid', 'ramp', 'airtable', 'retool', 'gusto', 'rippling',
+  'amplitude', 'hashicorp', 'confluent', 'scaleai', 'mercury', 'webflow',
+  'intercom', 'benchling', 'lattice', 'airbnb', 'doordash', 'instacart',
+  'robinhood', 'coinbase', 'databricks', 'duolingo', 'squarespace', 'asana',
+  'twilio', 'zendesk', 'hubspot', 'datadog', 'elastic', 'mixpanel',
+  'grammarly', 'loom', 'deel', 'dropbox', 'okta', 'gitlab', 'mozilla',
+  'clickup', 'miro', 'pendo', 'fullstory', 'heap', 'segment', 'brainstation',
+  'workato', 'toast', 'ripple', 'block', 'point72', 'virtu', 'verkada',
 ];
-
-const GREENHOUSE_BOARD_RE = /boards(?:-api)?\.greenhouse\.io\/([^/?#]+)/;
-
-async function fetchGreenhouseCompanies(): Promise<string[]> {
-  const apiKey = Deno.env.get('THEIRSTACK_API_KEY');
-  if (!apiKey) {
-    console.warn('THEIRSTACK_API_KEY not set, using fallback company list');
-    return GREENHOUSE_COMPANIES_FALLBACK;
-  }
-
-  const slugs = new Set<string>();
-  let page = 0;
-
-  while (true) {
-    let res: Response;
-    try {
-      res = await fetch('https://api.theirstack.com/v1/companies/search', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          company_technology_slug_or: ['greenhouse'],
-          job_filters: {
-            job_title_or: ['intern'],
-            posted_at_max_age_days: 90,
-            job_description_pattern_is_case_insensitive: true,
-          },
-          limit: 100,
-          page,
-          order_by: [{ desc: true, field: 'relevance' }],
-        }),
-        signal: AbortSignal.timeout(20000),
-      });
-    } catch (err) {
-      console.error('TheirStack fetch error:', err);
-      break;
-    }
-
-    if (!res.ok) {
-      console.error('TheirStack API error:', res.status);
-      break;
-    }
-
-    // deno-lint-ignore no-explicit-any
-    const data: any = await res.json();
-    // deno-lint-ignore no-explicit-any
-    const companies: any[] = data.data ?? [];
-
-    for (const company of companies) {
-      // Prefer slug extracted from an actual Greenhouse board URL
-      let slug: string | null = null;
-      for (const job of company.jobs_found ?? []) {
-        const url: string = job.url ?? job.job_url ?? '';
-        const match = url.match(GREENHOUSE_BOARD_RE);
-        if (match) { slug = match[1].toLowerCase(); break; }
-      }
-      // Fall back to domain-derived slug (e.g. "cloudflare.com" → "cloudflare")
-      if (!slug && company.domain) {
-        slug = company.domain.split('.')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
-      }
-      if (slug) slugs.add(slug);
-    }
-
-    if (companies.length < 100) break;
-    page++;
-  }
-
-  if (slugs.size === 0) {
-    console.warn('TheirStack returned no companies, using fallback list');
-    return GREENHOUSE_COMPANIES_FALLBACK;
-  }
-
-  console.log(`TheirStack: found ${slugs.size} Greenhouse companies`);
-  return [...slugs];
-}
 
 function extractGreenhousePay(job: any): string | null {
   // Some companies configure a pay/salary metadata field on their Greenhouse board
@@ -244,11 +173,9 @@ Deno.serve(async (_req: Request) => {
   );
   const githubToken = Deno.env.get('GITHUB_TOKEN');
 
-  const greenhouseCompanies = await fetchGreenhouseCompanies();
-
   // Fetch all sources in parallel
   const [ghResults, gitResults] = await Promise.all([
-    Promise.all(greenhouseCompanies.map(fetchGreenhouse)),
+    Promise.all(GREENHOUSE_COMPANIES.map(fetchGreenhouse)),
     Promise.all(GITHUB_REPOS.map(({ owner, repo }) => fetchGithubRepo(owner, repo, githubToken))),
   ]);
 
