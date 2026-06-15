@@ -324,7 +324,12 @@ body {
     background-color: #2a7a4f;
     border-color: #2a7a4f;
     color: #FFFFFA;
-    cursor: default;
+    cursor: pointer;
+}
+
+.apply_btn.applied:hover {
+    background-color: #1f5c3a;
+    border-color: #1f5c3a;
 }
 
 .right_jobs {
@@ -426,6 +431,15 @@ body.dark .apply_btn:hover {
     background: #702632;
     color: #FFFFFA;
     border-color: #702632;
+}
+body.dark .apply_btn.applied {
+    background: #2a7a4f;
+    border-color: #2a7a4f;
+    color: #FFFFFA;
+}
+body.dark .apply_btn.applied:hover {
+    background: #1f5c3a;
+    border-color: #1f5c3a;
 }
 body.dark .no_results { color: #eeb9c2; }
 

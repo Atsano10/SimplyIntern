@@ -127,7 +127,6 @@ async function loadLocationFilter() {
     });
 
     // Merge known aliases into canonical names so duplicates don't appear in the filter.
-    // Key = raw string that might appear in DB, value = canonical filter label.
     const LOCATION_ALIASES = {
       // United States variants
       'USA': 'United States', 'U.S.': 'United States',
@@ -135,6 +134,12 @@ async function loadLocationFilter() {
       // United Kingdom variants
       'UK': 'United Kingdom', 'England': 'United Kingdom',
       'Great Britain': 'United Kingdom', 'GBR': 'United Kingdom',
+      // City-only entries that should roll up to their state
+      'Nyc': 'New York', 'NYC': 'New York', 'La': 'California',
+      // Cities that should roll up to their country
+      'Rotterdam': 'Netherlands', 'Amsterdam': 'Netherlands',
+      // Brazilian state codes
+      'MG': 'Brazil', 'SP': 'Brazil', 'RJ': 'Brazil', 'RS': 'Brazil',
       // 3-letter ISO codes → canonical country names
       'CAN': 'Canada',    'DEU': 'Germany',   'FRA': 'France',
       'AUS': 'Australia', 'IND': 'India',     'CHN': 'China',
@@ -154,6 +159,11 @@ async function loadLocationFilter() {
       if (!cpMap[canonical]) cpMap[canonical] = new Set();
       for (const p of cpMap[alias]) cpMap[canonical].add(p);
       delete cpMap[alias];
+    });
+
+    // Drop junk entries: fragments starting with "or ", single letters, nonsense strings
+    Object.keys(cpMap).forEach(key => {
+      if (/^or\s/i.test(key) || key.length <= 1) delete cpMap[key];
     });
 
     Object.keys(cpMap).forEach(c => { locationPatternMap[c] = [...cpMap[c]]; });
@@ -324,7 +334,10 @@ function esc(str) {
 }
 
 async function markApplied(btn) {
-  if (btn.classList.contains('applied')) return;
+  if (btn.classList.contains('applied')) {
+    await unmarkApplied(btn);
+    return;
+  }
 
   const entry = {
     position: btn.dataset.title,
@@ -348,7 +361,10 @@ async function markApplied(btn) {
         notes:    entry.notes,
       }).select().single();
 
-      if (!error && data) entry.id = data.id;
+      if (!error && data) {
+        entry.id = data.id;
+        btn.dataset.appId = data.id;
+      }
     }
   } catch (_) {}
 
@@ -358,7 +374,27 @@ async function markApplied(btn) {
 
   btn.textContent = 'Applied ✓';
   btn.classList.add('applied');
-  btn.disabled = true;
+}
+
+async function unmarkApplied(btn) {
+  const appId = btn.dataset.appId;
+
+  try {
+    const { data: { user } } = await client.auth.getUser();
+    if (user && appId) {
+      await client.from('applications').delete().eq('id', appId);
+    }
+  } catch (_) {}
+
+  const apps = JSON.parse(localStorage.getItem('si_applications') || '[]');
+  const filtered = appId
+    ? apps.filter(a => String(a.id) !== String(appId))
+    : apps.filter(a => a.position !== btn.dataset.title || a.company !== btn.dataset.company);
+  localStorage.setItem('si_applications', JSON.stringify(filtered));
+
+  btn.textContent = 'Mark Applied';
+  btn.classList.remove('applied');
+  delete btn.dataset.appId;
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
