@@ -67,21 +67,22 @@ document.addEventListener('click', e => {
 
 // ── LOCATION LOADING ──────────────────────────────────────────────────────────
 
-function locToCountry(loc) {
-  const s = (loc || '').trim();
-  if (!s) return null;
-  if (/\bremote\b/i.test(s)) return 'Remote';
-  // US: "City, ST" ends with 2-letter state code
-  if (/,\s*[A-Z]{2}\s*$/.test(s)) return 'United States';
-  // "City, Country" — last comma segment
-  const parts = s.split(',');
-  if (parts.length >= 2) {
-    const last = parts[parts.length - 1].trim();
-    if (/^[A-Z]{2}$/.test(last)) return 'United States'; // state code fallback
-    return last;
-  }
-  return s;
-}
+const STATE_NAMES = {
+  AL: 'Alabama',       AK: 'Alaska',         AZ: 'Arizona',        AR: 'Arkansas',
+  CA: 'California',    CO: 'Colorado',        CT: 'Connecticut',    DE: 'Delaware',
+  FL: 'Florida',       GA: 'Georgia',         HI: 'Hawaii',         ID: 'Idaho',
+  IL: 'Illinois',      IN: 'Indiana',         IA: 'Iowa',           KS: 'Kansas',
+  KY: 'Kentucky',      LA: 'Louisiana',       ME: 'Maine',          MD: 'Maryland',
+  MA: 'Massachusetts', MI: 'Michigan',        MN: 'Minnesota',      MS: 'Mississippi',
+  MO: 'Missouri',      MT: 'Montana',         NE: 'Nebraska',       NV: 'Nevada',
+  NH: 'New Hampshire', NJ: 'New Jersey',      NM: 'New Mexico',     NY: 'New York',
+  NC: 'North Carolina',ND: 'North Dakota',    OH: 'Ohio',           OK: 'Oklahoma',
+  OR: 'Oregon',        PA: 'Pennsylvania',    RI: 'Rhode Island',   SC: 'South Carolina',
+  SD: 'South Dakota',  TN: 'Tennessee',       TX: 'Texas',          UT: 'Utah',
+  VT: 'Vermont',       VA: 'Virginia',        WA: 'Washington',     WV: 'West Virginia',
+  WI: 'Wisconsin',     WY: 'Wyoming',         DC: 'Washington DC',
+};
+const US_STATES = new Set(Object.keys(STATE_NAMES));
 
 async function loadLocationFilter() {
   try {
@@ -95,28 +96,45 @@ async function loadLocationFilter() {
     (data || []).forEach(row => {
       const loc = (row.location || '').trim();
       if (!loc) return;
-      const country = locToCountry(loc);
-      if (!country) return;
-      if (!cpMap[country]) cpMap[country] = new Set();
 
-      if (/\bremote\b/i.test(loc)) {
-        cpMap[country].add('remote');
-      } else {
-        const m = loc.match(/,\s*([A-Z]{2})\s*$/);
-        if (m) {
-          cpMap[country].add(`, ${m[1]}`); // ", NY", ", CA" etc.
-        } else {
-          // For international, match on the country name itself
-          const parts = loc.split(',');
-          cpMap[country].add(parts[parts.length - 1].trim());
+      // Handle multi-location strings joined by " / "
+      const parts = loc.split(' / ').map(p => p.trim()).filter(Boolean);
+      parts.forEach(part => {
+        if (/\bremote\b/i.test(part)) {
+          if (!cpMap['Remote']) cpMap['Remote'] = new Set();
+          cpMap['Remote'].add('remote');
+          return;
         }
-      }
+
+        // US: ends with ", ST" where ST is a known state code
+        const stateMatch = part.match(/,\s*([A-Z]{2})\s*$/);
+        if (stateMatch && US_STATES.has(stateMatch[1])) {
+          const stateName = STATE_NAMES[stateMatch[1]];
+          if (!cpMap[stateName]) cpMap[stateName] = new Set();
+          cpMap[stateName].add(`, ${stateMatch[1]}`);
+          return;
+        }
+
+        // International: use country name (last comma segment or full string)
+        const locParts = part.split(',');
+        const country = locParts.length >= 2
+          ? locParts[locParts.length - 1].trim()
+          : part;
+        if (!country) return;
+        if (!cpMap[country]) cpMap[country] = new Set();
+        cpMap[country].add(country);
+      });
     });
 
     Object.keys(cpMap).forEach(c => { locationPatternMap[c] = [...cpMap[c]]; });
   } catch {
-    locationPatternMap['Remote']        = ['remote'];
-    locationPatternMap['United States'] = [', NY', ', CA', ', IL', ', MA', ', WA', ', TX'];
+    locationPatternMap['Remote']         = ['remote'];
+    locationPatternMap['New York']        = [', NY'];
+    locationPatternMap['California']      = [', CA'];
+    locationPatternMap['Illinois']        = [', IL'];
+    locationPatternMap['Massachusetts']   = [', MA'];
+    locationPatternMap['Washington']      = [', WA'];
+    locationPatternMap['Texas']           = [', TX'];
   }
 
   const countries = Object.keys(locationPatternMap).sort((a, b) => {

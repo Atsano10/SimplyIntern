@@ -29,6 +29,69 @@ function getType(title: string): string {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+// ─── Location normalisation ───────────────────────────────────────────────────
+
+const STATE_CODES: Record<string, string> = {
+  'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR',
+  'california': 'CA', 'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE',
+  'florida': 'FL', 'georgia': 'GA', 'hawaii': 'HI', 'idaho': 'ID',
+  'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA', 'kansas': 'KS',
+  'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+  'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS',
+  'missouri': 'MO', 'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV',
+  'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY',
+  'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH', 'oklahoma': 'OK',
+  'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+  'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT',
+  'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV',
+  'wisconsin': 'WI', 'wyoming': 'WY',
+};
+
+function titleCase(s: string): string {
+  return s.split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '').join(' ');
+}
+
+function normalizeOnePart(part: string): string {
+  const p = part.trim();
+  if (!p) return '';
+  if (/\bremote\b/i.test(p)) return 'Remote';
+
+  if (/^us->/i.test(p)) {
+    const rest = p.slice(4).replace(/_/g, ' ').trim();
+    if (/\bremote\b/i.test(rest)) return 'Remote';
+    if (/^washington[\s,]+dc$/i.test(rest) || /^district of columbia$/i.test(rest)) return 'Washington, DC';
+    const withCode = rest.match(/^(.+),\s*([A-Za-z]{2})$/);
+    if (withCode) return `${titleCase(withCode[1])}, ${withCode[2].toUpperCase()}`;
+    const code = STATE_CODES[rest.toLowerCase()];
+    if (code) return `${titleCase(rest)}, ${code}`;
+    return titleCase(rest);
+  }
+
+  // Other country->city format (canada->toronto, uk->london)
+  const arrowMatch = p.match(/^([a-z][a-z_\s]*)->.*/i);
+  if (arrowMatch) return titleCase(arrowMatch[1].replace(/_/g, ' ').trim());
+
+  // Plain word / underscore-separated country name (india, united_kingdom)
+  if (/^[a-z][a-z_\s]*$/i.test(p) && !p.includes(',')) return titleCase(p.replace(/_/g, ' '));
+
+  // Already clean (Greenhouse "San Francisco, CA", "London, England")
+  return p;
+}
+
+function normalizeLocation(raw: string): string | null {
+  if (!raw) return null;
+  const detagged = raw
+    .replace(/<br\s*\/?>/gi, '|')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!detagged) return null;
+  const parts = detagged.split('|').map(p => p.trim()).filter(Boolean);
+  const normalized = [...new Set(parts.map(normalizeOnePart).filter(Boolean))];
+  if (normalized.length === 0) return null;
+  return normalized.join(' / ');
+}
+
 // ─── Greenhouse ──────────────────────────────────────────────────────────────
 
 const GREENHOUSE_COMPANIES = [
@@ -110,14 +173,15 @@ function parseMarkdownTable(content: string): Listing[] {
 
     const role     = roleRaw.replace(/[*_`[\]🔒✅❌🛂🎓]/g, '').trim();
     const company  = companyRaw.replace(/[*_`[\]🔥]/g, '').trim();
-    const location = locationRaw.replace(/[*_`[\]]/g, '').trim();
+    const rawLoc   = locationRaw.replace(/[*_`[\]]/g, '').trim();
+    const location = normalizeLocation(rawLoc);
 
     if (!role || !company || !isInternship(role)) continue;
 
     jobs.push({
       title:      role,
       company,
-      location:   location || null,
+      location,
       pay:        null,
       type:       getType(role),
       url,

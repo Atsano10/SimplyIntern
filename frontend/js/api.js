@@ -17,7 +17,14 @@ async function fetchJobs(filters = {}, offset = 0, limit = 50) {
   }
 
   if (filters.locationPatterns && filters.locationPatterns.length > 0) {
-    const orClauses = filters.locationPatterns.map(p => `location.ilike.%${p}%`).join(',');
+    // US state patterns start with "," (e.g. ", NY") and remote uses substring match.
+    // International country names use end-of-string match to avoid false positives
+    // (e.g. "India" matching "Indianapolis, IN").
+    const orClauses = filters.locationPatterns.map(p =>
+      (p.startsWith(',') || p === 'remote')
+        ? `location.ilike.%${p}%`
+        : `location.ilike.%${p}`
+    ).join(',');
     query = query.or(orClauses);
   }
 
