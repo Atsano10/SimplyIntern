@@ -126,6 +126,36 @@ async function loadLocationFilter() {
       });
     });
 
+    // Merge known aliases into canonical names so duplicates don't appear in the filter.
+    // Key = raw string that might appear in DB, value = canonical filter label.
+    const LOCATION_ALIASES = {
+      // United States variants
+      'USA': 'United States', 'U.S.': 'United States',
+      'United States of America': 'United States', 'U.S.A.': 'United States',
+      // United Kingdom variants
+      'UK': 'United Kingdom', 'England': 'United Kingdom',
+      'Great Britain': 'United Kingdom', 'GBR': 'United Kingdom',
+      // 3-letter ISO codes → canonical country names
+      'CAN': 'Canada',    'DEU': 'Germany',   'FRA': 'France',
+      'AUS': 'Australia', 'IND': 'India',     'CHN': 'China',
+      'JPN': 'Japan',     'KOR': 'South Korea', 'SGP': 'Singapore',
+      'NLD': 'Netherlands', 'ESP': 'Spain',   'ITA': 'Italy',
+      'BRA': 'Brazil',    'MEX': 'Mexico',    'ARG': 'Argentina',
+      'COL': 'Colombia',  'CHL': 'Chile',     'ZAF': 'South Africa',
+      'NZL': 'New Zealand', 'SWE': 'Sweden',  'NOR': 'Norway',
+      'DNK': 'Denmark',   'FIN': 'Finland',   'BEL': 'Belgium',
+      'CHE': 'Switzerland', 'AUT': 'Austria', 'PRT': 'Portugal',
+      'POL': 'Poland',    'CZE': 'Czech Republic', 'TUR': 'Turkey',
+      'ISR': 'Israel',    'ARE': 'UAE',       'TWN': 'Taiwan',
+      'HKG': 'Hong Kong', 'IRE': 'Ireland',   'IRL': 'Ireland',
+    };
+    Object.entries(LOCATION_ALIASES).forEach(([alias, canonical]) => {
+      if (!cpMap[alias]) return;
+      if (!cpMap[canonical]) cpMap[canonical] = new Set();
+      for (const p of cpMap[alias]) cpMap[canonical].add(p);
+      delete cpMap[alias];
+    });
+
     Object.keys(cpMap).forEach(c => { locationPatternMap[c] = [...cpMap[c]]; });
   } catch {
     locationPatternMap['Remote']         = ['remote'];

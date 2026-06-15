@@ -165,6 +165,23 @@ function normalizeGreenhouseLocation(raw: string | null): string | null {
   // United States aliases
   if (/^(usa|u\.s\.a\.|united states of america)$/i.test(s)) return 'United States';
 
+  // 3-letter ISO country codes  e.g. "CAN", "GBR", "DEU"
+  const ISO3: Record<string, string> = {
+    USA: 'United States', CAN: 'Canada',  GBR: 'United Kingdom', DEU: 'Germany',
+    FRA: 'France',        AUS: 'Australia', IND: 'India',         CHN: 'China',
+    JPN: 'Japan',         KOR: 'South Korea', SGP: 'Singapore',   NLD: 'Netherlands',
+    ESP: 'Spain',         ITA: 'Italy',    BRA: 'Brazil',         MEX: 'Mexico',
+    ARG: 'Argentina',     COL: 'Colombia', CHL: 'Chile',          ZAF: 'South Africa',
+    NZL: 'New Zealand',   SWE: 'Sweden',   NOR: 'Norway',         DNK: 'Denmark',
+    FIN: 'Finland',       BEL: 'Belgium',  CHE: 'Switzerland',    AUT: 'Austria',
+    PRT: 'Portugal',      POL: 'Poland',   CZE: 'Czech Republic', TUR: 'Turkey',
+    ISR: 'Israel',        ARE: 'UAE',      TWN: 'Taiwan',         HKG: 'Hong Kong',
+    THA: 'Thailand',      IDN: 'Indonesia', MYS: 'Malaysia',      PHL: 'Philippines',
+    VNM: 'Vietnam',       UKR: 'Ukraine',  EGY: 'Egypt',          NGA: 'Nigeria',
+    KEN: 'Kenya',         GHA: 'Ghana',    IRE: 'Ireland',        IRL: 'Ireland',
+  };
+  if (/^[A-Z]{3}$/.test(s) && ISO3[s]) return ISO3[s];
+
   if (/^remote$/i.test(s)) return 'Remote';
   if (/^(apac|emea|americas|latam|global)\s*[-–]\s*remote$/i.test(s)) return 'Remote';
 
