@@ -144,6 +144,19 @@ async function loadLocationFilter() {
   });
 
   msInit('ms_location', 'locations', countries.map(c => ({ value: c, label: c })));
+
+  // Add live-search input to the location panel (it has many options)
+  const searchEl = document.createElement('input');
+  searchEl.type = 'text';
+  searchEl.placeholder = 'Search locations…';
+  searchEl.className = 'ms_search';
+  searchEl.addEventListener('input', () => {
+    const q = searchEl.value.toLowerCase();
+    document.querySelectorAll('#ms_location_panel .ms_option').forEach(opt => {
+      opt.style.display = opt.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+  document.getElementById('ms_location_panel').prepend(searchEl);
 }
 
 // ── SEARCH ────────────────────────────────────────────────────────────────────

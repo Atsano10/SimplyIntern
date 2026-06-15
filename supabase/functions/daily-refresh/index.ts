@@ -128,6 +128,32 @@ const KNOWN_US_CITIES: Record<string, string> = {
   'salt lake city': 'Salt Lake City, UT', 'las vegas': 'Las Vegas, NV',
 };
 
+// Common international cities that appear without a country in Greenhouse data
+const KNOWN_INTL_CITIES: Record<string, string> = {
+  'paris': 'Paris, France',             'london': 'London, England',
+  'berlin': 'Berlin, Germany',          'amsterdam': 'Amsterdam, Netherlands',
+  'madrid': 'Madrid, Spain',            'barcelona': 'Barcelona, Spain',
+  'rome': 'Rome, Italy',                'milan': 'Milan, Italy',
+  'zurich': 'Zurich, Switzerland',      'stockholm': 'Stockholm, Sweden',
+  'oslo': 'Oslo, Norway',               'copenhagen': 'Copenhagen, Denmark',
+  'helsinki': 'Helsinki, Finland',      'brussels': 'Brussels, Belgium',
+  'vienna': 'Vienna, Austria',          'prague': 'Prague, Czech Republic',
+  'warsaw': 'Warsaw, Poland',           'lisbon': 'Lisbon, Portugal',
+  'toronto': 'Toronto, Canada',         'vancouver': 'Vancouver, Canada',
+  'montreal': 'Montreal, Canada',       'ottawa': 'Ottawa, Canada',
+  'sydney': 'Sydney, Australia',        'melbourne': 'Melbourne, Australia',
+  'tokyo': 'Tokyo, Japan',              'osaka': 'Osaka, Japan',
+  'singapore': 'Singapore',             'hong kong': 'Hong Kong',
+  'dubai': 'Dubai, UAE',                'tel aviv': 'Tel Aviv, Israel',
+  'bangalore': 'Bangalore, India',      'mumbai': 'Mumbai, India',
+  'delhi': 'Delhi, India',              'hyderabad': 'Hyderabad, India',
+  'beijing': 'Beijing, China',          'shanghai': 'Shanghai, China',
+  'seoul': 'Seoul, South Korea',        'taipei': 'Taipei, Taiwan',
+  'mexico city': 'Mexico City, Mexico', 'bogota': 'Bogotá, Colombia',
+  'buenos aires': 'Buenos Aires, Argentina', 'sao paulo': 'São Paulo, Brazil',
+  'cape town': 'Cape Town, South Africa', 'nairobi': 'Nairobi, Kenya',
+};
+
 function normalizeGreenhouseLocation(raw: string | null): string | null {
   if (!raw) return null;
   const s = raw.trim();
@@ -135,6 +161,9 @@ function normalizeGreenhouseLocation(raw: string | null): string | null {
 
   // Non-location strings
   if (/^in[-\s]?office$/i.test(s)) return null;
+
+  // United States aliases
+  if (/^(usa|u\.s\.a\.|united states of america)$/i.test(s)) return 'United States';
 
   if (/^remote$/i.test(s)) return 'Remote';
   if (/^(apac|emea|americas|latam|global)\s*[-–]\s*remote$/i.test(s)) return 'Remote';
@@ -194,9 +223,12 @@ function normalizeGreenhouseLocation(raw: string | null): string | null {
     return trimmed[0];
   }
 
-  // Single word/phrase — check known US city abbreviations
-  const known = KNOWN_US_CITIES[s.toLowerCase()];
-  if (known !== undefined) return known || null;
+  // Single word/phrase — check known city maps
+  const lower = s.toLowerCase();
+  const knownUs = KNOWN_US_CITIES[lower];
+  if (knownUs !== undefined) return knownUs || null;
+  const knownIntl = KNOWN_INTL_CITIES[lower];
+  if (knownIntl !== undefined) return knownIntl;
 
   return s;
 }
