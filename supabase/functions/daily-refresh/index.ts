@@ -92,6 +92,115 @@ function normalizeLocation(raw: string): string | null {
   return normalized.join(' / ');
 }
 
+// Set of valid US state codes (derived from STATE_CODES + DC)
+const US_STATE_CODE_SET = new Set([...Object.values(STATE_CODES), 'DC']);
+
+// ISO 3166-1 alpha-2 codes that appear in Greenhouse "XX-City" location prefixes
+const COUNTRY_CODE_PREFIXES: Record<string, string> = {
+  NL: 'Netherlands', ES: 'Spain', DE: 'Germany', FR: 'France',
+  GB: 'United Kingdom', IT: 'Italy', SE: 'Sweden', NO: 'Norway',
+  DK: 'Denmark', FI: 'Finland', BE: 'Belgium', CH: 'Switzerland',
+  AT: 'Austria', PT: 'Portugal', PL: 'Poland', CZ: 'Czech Republic',
+  TR: 'Turkey', AE: 'UAE', SG: 'Singapore', JP: 'Japan', CN: 'China',
+  AU: 'Australia', NZ: 'New Zealand', BR: 'Brazil', MX: 'Mexico',
+  AR: 'Argentina', CO: 'Colombia', CL: 'Chile', ZA: 'South Africa',
+};
+
+// Common US cities that appear without a state code in Greenhouse data
+const KNOWN_US_CITIES: Record<string, string> = {
+  'sf': 'San Francisco, CA',         'san francisco': 'San Francisco, CA',
+  'nyc': 'New York, NY',             'new york': 'New York, NY',
+  'new york city': 'New York, NY',   'los angeles': 'Los Angeles, CA',
+  'chicago': 'Chicago, IL',          'boston': 'Boston, MA',
+  'austin': 'Austin, TX',            'denver': 'Denver, CO',
+  'atlanta': 'Atlanta, GA',          'miami': 'Miami, FL',
+  'dallas': 'Dallas, TX',            'houston': 'Houston, TX',
+  'dc': 'Washington, DC',            'washington dc': 'Washington, DC',
+  'phoenix': 'Phoenix, AZ',          'portland': 'Portland, OR',
+  'san diego': 'San Diego, CA',      'san jose': 'San Jose, CA',
+  'palo alto': 'Palo Alto, CA',      'mountain view': 'Mountain View, CA',
+  'sunnyvale': 'Sunnyvale, CA',      'menlo park': 'Menlo Park, CA',
+  'redwood city': 'Redwood City, CA','bellevue': 'Bellevue, WA',
+  'cambridge': 'Cambridge, MA',      'seattle': 'Seattle, WA',
+  'minneapolis': 'Minneapolis, MN',  'philadelphia': 'Philadelphia, PA',
+  'pittsburgh': 'Pittsburgh, PA',    'raleigh': 'Raleigh, NC',
+  'charlotte': 'Charlotte, NC',      'nashville': 'Nashville, TN',
+  'salt lake city': 'Salt Lake City, UT', 'las vegas': 'Las Vegas, NV',
+};
+
+function normalizeGreenhouseLocation(raw: string | null): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  if (!s) return null;
+
+  // Non-location strings
+  if (/^in[-\s]?office$/i.test(s)) return null;
+
+  if (/^remote$/i.test(s)) return 'Remote';
+  if (/^(apac|emea|americas|latam|global)\s*[-–]\s*remote$/i.test(s)) return 'Remote';
+
+  // Semicolon-separated multi-location: normalize each part
+  if (s.includes(';')) {
+    const parts = s.split(';')
+      .map(p => normalizeGreenhouseLocation(p.trim()))
+      .filter((p): p is string => p !== null && p !== '');
+    const unique = [...new Set(parts)];
+    return unique.length > 0 ? unique.join(' / ') : null;
+  }
+
+  // Anything containing "remote" → Remote
+  if (/\bremote\b/i.test(s)) return 'Remote';
+
+  // "US > State > City" format  e.g. "US > Arizona > Phoenix"
+  const usArrow = s.match(/^us\s*>\s*([^>]+?)\s*>\s*([^>]+)$/i);
+  if (usArrow) {
+    const code = STATE_CODES[usArrow[1].trim().toLowerCase()];
+    const city = titleCase(usArrow[2].replace(/\(.*?\)/g, '').trim());
+    return code ? `${city}, ${code}` : `${city}, US`;
+  }
+
+  // "Country > ..." or any arrow format → extract first segment as country
+  if (s.includes('>')) {
+    return titleCase(s.split('>')[0].replace(/[()]/g, '').trim()) || null;
+  }
+
+  // "XX-CityOrLabel" country-code or US-state-code prefix  e.g. "ES-Barcelona", "NL-Hub"
+  const prefixM = s.match(/^([A-Z]{2})-(.+)$/);
+  if (prefixM) {
+    const code = prefixM[1];
+    if (US_STATE_CODE_SET.has(code)) return `${titleCase(prefixM[2].replace(/-/g, ' ').trim())}, ${code}`;
+    if (COUNTRY_CODE_PREFIXES[code]) return COUNTRY_CODE_PREFIXES[code];
+  }
+
+  // "City, ST United States" (missing comma before country)  e.g. "San Mateo, CA United States"
+  const missingComma = s.match(/^(.+,\s*[A-Z]{2})\s+United States$/i);
+  if (missingComma) return missingComma[1].trim();
+
+  const parts = s.split(',').map(p => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    // Strip trailing "United States" / "US"
+    const trimmed = /^(united states|us)$/i.test(parts[parts.length - 1])
+      ? parts.slice(0, -1)
+      : parts;
+
+    if (trimmed.length >= 2) {
+      const last = trimmed[trimmed.length - 1];
+      // Full US state name → "City, ST"  e.g. "South San Francisco, California"
+      const stateCode = STATE_CODES[last.toLowerCase()];
+      if (stateCode) return `${trimmed[0]}, ${stateCode}`;
+      // International "City, Country" — keep as-is
+      return `${trimmed[0]}, ${last}`;
+    }
+    return trimmed[0];
+  }
+
+  // Single word/phrase — check known US city abbreviations
+  const known = KNOWN_US_CITIES[s.toLowerCase()];
+  if (known !== undefined) return known || null;
+
+  return s;
+}
+
 // ─── Greenhouse ──────────────────────────────────────────────────────────────
 
 const GREENHOUSE_COMPANIES = [
@@ -129,7 +238,7 @@ async function fetchGreenhouse(company: string): Promise<Listing[]> {
       .map((j: any): Listing => ({
         title:      j.title,
         company:    capitalize(company),
-        location:   j.location?.name ?? null,
+        location:   normalizeGreenhouseLocation(j.location?.name ?? null),
         pay:        null,
         type:       getType(j.title),
         url:        j.absolute_url,
