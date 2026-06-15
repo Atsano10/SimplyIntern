@@ -145,16 +145,63 @@ async function fetchGreenhouse(company: string): Promise<Listing[]> {
 // ─── GitHub ──────────────────────────────────────────────────────────────────
 
 const GITHUB_REPOS = [
-  { owner: 'pittcsc',      repo: 'Summer2026-Internships' },
   { owner: 'SimplifyJobs', repo: 'Summer2026-Internships' },
-  { owner: 'ouckah',       repo: 'Summer2026-Internships' },
   { owner: 'vanshb03',     repo: 'Summer2027-Internships' },
 ];
 
-function parseMarkdownTable(content: string): Listing[] {
+// Parses the HTML <table> format used by SimplifyJobs repos.
+// deno-lint-ignore no-explicit-any
+function parseHtmlTable(content: string): Listing[] {
+  const jobs: Listing[] = [];
+  let lastCompany = '';
+
+  const rowRe = /<tr>([\s\S]*?)<\/tr>/gi;
+  let rowM: RegExpExecArray | null;
+
+  while ((rowM = rowRe.exec(content)) !== null) {
+    const rowHtml = rowM[1];
+    const tdRe = /<td>([\s\S]*?)<\/td>/gi;
+    const cols: string[] = [];
+    let tdM: RegExpExecArray | null;
+    while ((tdM = tdRe.exec(rowHtml)) !== null) cols.push(tdM[1].trim());
+    if (cols.length < 4) continue;
+
+    const [companyCol, roleCol, locationCol, linkCol] = cols;
+
+    // Company: extract from <a> tag, or carry forward last for ↳ rows
+    const rawCompanyText = companyCol.replace(/<[^>]+>/g, '').replace(/[🔥🔒]/g, '').trim();
+    let company: string;
+    if (rawCompanyText === '↳') {
+      if (!lastCompany) continue;
+      company = lastCompany;
+    } else {
+      const aM = companyCol.match(/<a[^>]*>([^<]+)<\/a>/);
+      company = (aM ? aM[1] : rawCompanyText).replace(/[🔥🔒]/g, '').trim();
+      if (!company) continue;
+      lastCompany = company;
+    }
+
+    const role     = roleCol.replace(/<[^>]+>/g, '').replace(/[🔒✅❌🛂🎓]/g, '').trim();
+    const location = normalizeLocation(locationCol);
+    const urlM     = linkCol.match(/href="(https?:\/\/[^"]+)"/);
+    const url      = urlM?.[1];
+    if (!url || !role || !isInternship(role)) continue;
+
+    jobs.push({
+      title: role, company, location, pay: null,
+      type: getType(role), url, source: 'github',
+      posted_at: null, updated_at: new Date().toISOString(),
+    });
+  }
+  return jobs;
+}
+
+// Parses the legacy markdown pipe-table format used by some repos.
+function parsePipeTable(content: string): Listing[] {
   const lines = content.split('\n');
   const jobs: Listing[] = [];
   let rowsInTable = 0;
+  let lastCompany = '';
 
   for (const line of lines) {
     if (!line.trim().startsWith('|')) { rowsInTable = 0; continue; }
@@ -171,26 +218,33 @@ function parseMarkdownTable(content: string): Listing[] {
     const url = mdLink?.[1] ?? htmlLink?.[1];
     if (!url) continue;
 
-    const role     = roleRaw.replace(/[*_`[\]🔒✅❌🛂🎓]/g, '').trim();
-    const company  = companyRaw.replace(/[*_`[\]🔥]/g, '').trim();
-    const rawLoc   = locationRaw.replace(/[*_`[\]]/g, '').trim();
-    const location = normalizeLocation(rawLoc);
+    const role = roleRaw.replace(/[*_`[\]🔒✅❌🛂🎓]/g, '').trim();
+    const companyClean = companyRaw.replace(/[*_`[\]🔥]/g, '').trim();
+    let company: string;
+    if (companyClean === '↳') {
+      if (!lastCompany) continue;
+      company = lastCompany;
+    } else {
+      company = companyClean;
+      if (company) lastCompany = company;
+    }
 
+    const location = normalizeLocation(locationRaw.replace(/[*_`[\]]/g, '').trim());
     if (!role || !company || !isInternship(role)) continue;
 
     jobs.push({
-      title:      role,
-      company,
-      location,
-      pay:        null,
-      type:       getType(role),
-      url,
-      source:     'github',
-      posted_at:  null,
-      updated_at: new Date().toISOString(),
+      title: role, company, location, pay: null,
+      type: getType(role), url, source: 'github',
+      posted_at: null, updated_at: new Date().toISOString(),
     });
   }
   return jobs;
+}
+
+function parseGithubReadme(content: string): Listing[] {
+  return /<table[\s>]/i.test(content)
+    ? parseHtmlTable(content)
+    : parsePipeTable(content);
 }
 
 // Tries dev → main → master so repos with a dev branch get the freshest data.
@@ -205,7 +259,7 @@ async function fetchGithubRepo(owner: string, repo: string, token?: string): Pro
         { headers, signal: AbortSignal.timeout(10000) }
       );
       if (!res.ok) continue;
-      const jobs = parseMarkdownTable(await res.text());
+      const jobs = parseGithubReadme(await res.text());
       if (jobs.length > 0) return jobs;
     } catch {
       continue;
