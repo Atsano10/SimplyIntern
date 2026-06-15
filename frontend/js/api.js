@@ -1,3 +1,4 @@
+// I match industries by scanning the job title for these keywords
 const INDUSTRY_KEYWORDS = {
   tech:     ['software', 'developer', 'cybersecurity', 'technology', 'machine learning', 'programming', 'devops', 'computer science', 'data science', 'artificial intelligence', 'full stack', 'backend', 'frontend', 'systems engineer'],
   medical:  ['medical', 'healthcare', 'clinical', 'nursing', 'pharmacy', 'hospital', 'biomedical', 'pharmaceutical', 'public health'],
@@ -7,6 +8,8 @@ const INDUSTRY_KEYWORDS = {
   research: ['research', 'laboratory', 'biology', 'chemistry', 'physics', 'ecology', 'neuroscience', 'genomics', 'scientific research'],
 };
 
+// Builds and runs the Supabase query based on whatever filters are currently active.
+// Returns one page of results — offset and limit control pagination.
 async function fetchJobs(filters = {}, offset = 0, limit = 50) {
   let query = client.from('listings').select('*');
 
@@ -17,9 +20,9 @@ async function fetchJobs(filters = {}, offset = 0, limit = 50) {
   }
 
   if (filters.locationPatterns && filters.locationPatterns.length > 0) {
-    // US state patterns start with "," (e.g. ", NY") and remote uses substring match.
-    // International country names use end-of-string match to avoid false positives
-    // (e.g. "India" matching "Indianapolis, IN").
+    // US state patterns start with "," (e.g. ", NY") so I use substring match for those.
+    // Country names use end-of-string match to avoid false positives —
+    // e.g. "India" would otherwise match "Indianapolis, IN" with a plain substring search.
     const orClauses = filters.locationPatterns.map(p =>
       (p.startsWith(',') || p === 'remote')
         ? `location.ilike.%${p}%`
@@ -36,8 +39,8 @@ async function fetchJobs(filters = {}, offset = 0, limit = 50) {
   }
 
   if (filters.jobTypes && filters.jobTypes.length > 0) {
-    // Use title matching instead of the type field — the DB type field has bad data
-    // from the scraper (e.g. "External Communications" was tagged as externship)
+    // I match by title instead of the DB type field because the scraper sometimes tags things wrong
+    // (e.g. a role called "External Communications" was getting tagged as an externship)
     const TYPE_PATTERNS = {
       'internship': ['intern'],
       'co-op':      ['co-op', 'co op', 'coop'],

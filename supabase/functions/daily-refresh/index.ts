@@ -1,7 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
+// Shape of a job listing as stored in the DB
 interface Listing {
   title:      string;
   company:    string;
@@ -14,12 +13,14 @@ interface Listing {
   updated_at: string;
 }
 
-// ─── Classification helpers ──────────────────────────────────────────────────
+// Internship detection
 
+// I check job titles against this regex to filter out full-time roles from the scraped data
 const INTERN_RE = /\b(intern|internship|co-op|coop|co\s+op|externship|extern|summer|winter)\b/i;
 
 const isInternship = (text: string) => INTERN_RE.test(text);
 
+// Figures out whether a listing is an internship, co-op, or externship based on its title
 function getType(title: string): string {
   const lower = title.toLowerCase();
   if (['co-op', 'coop', 'co op'].some(kw => lower.includes(kw))) return 'co-op';
@@ -29,8 +30,12 @@ function getType(title: string): string {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-// ─── Location normalisation ───────────────────────────────────────────────────
+// Location normalization
+// Both GitHub and Greenhouse send inconsistent location strings, so I normalize everything
+// into "City, ST" for US or "City, Country" for international before saving to the DB.
+// This is what makes the location filter actually work.
 
+// Used to convert full state names like "California" into codes like "CA"
 const STATE_CODES: Record<string, string> = {
   'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR',
   'california': 'CA', 'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE',
@@ -47,10 +52,13 @@ const STATE_CODES: Record<string, string> = {
   'wisconsin': 'WI', 'wyoming': 'WY',
 };
 
+// Capitalizes the first letter of each word
 function titleCase(s: string): string {
   return s.split(' ').map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '').join(' ');
 }
 
+// Handles a single location chunk from a GitHub README.
+// GitHub repos use "us->state" or "country->city" format which I convert to clean strings.
 function normalizeOnePart(part: string): string {
   const p = part.trim();
   if (!p) return '';
@@ -67,17 +75,20 @@ function normalizeOnePart(part: string): string {
     return titleCase(rest);
   }
 
-  // Other country->city format (canada->toronto, uk->london)
+  // Other country->city format (e.g. canada->toronto, uk->london) — I just extract the country
   const arrowMatch = p.match(/^([a-z][a-z_\s]*)->.*/i);
   if (arrowMatch) return titleCase(arrowMatch[1].replace(/_/g, ' ').trim());
 
-  // Plain word / underscore-separated country name (india, united_kingdom)
+  // Plain lowercase country name or underscore-separated (e.g. "india", "united_kingdom")
   if (/^[a-z][a-z_\s]*$/i.test(p) && !p.includes(',')) return titleCase(p.replace(/_/g, ' '));
 
-  // Already clean (Greenhouse "San Francisco, CA", "London, England")
+  // Already clean (e.g. "San Francisco, CA" or "London, England")
   return p;
 }
 
+// Entry point for GitHub locations.
+// Some repos use multi-location HTML cells like <details><summary>3 locations</summary>...<br>...</details>
+// I strip the tags, split on <br>, normalize each part, and join them with " / ".
 function normalizeLocation(raw: string): string | null {
   if (!raw) return null;
   const detagged = raw
@@ -92,10 +103,11 @@ function normalizeLocation(raw: string): string | null {
   return normalized.join(' / ');
 }
 
-// Set of valid US state codes (derived from STATE_CODES + DC)
+// Quick lookup to check if a 2-letter code is a real US state
 const US_STATE_CODE_SET = new Set([...Object.values(STATE_CODES), 'DC']);
 
-// ISO 3166-1 alpha-2 codes that appear in Greenhouse "XX-City" location prefixes
+// Some Greenhouse boards prefix locations with a 2-letter country code like "ES-Barcelona" or "NL-Hub".
+// I use this to map those prefixes to readable country names.
 const COUNTRY_CODE_PREFIXES: Record<string, string> = {
   NL: 'Netherlands', ES: 'Spain', DE: 'Germany', FR: 'France',
   GB: 'United Kingdom', IT: 'Italy', SE: 'Sweden', NO: 'Norway',
@@ -106,7 +118,8 @@ const COUNTRY_CODE_PREFIXES: Record<string, string> = {
   AR: 'Argentina', CO: 'Colombia', CL: 'Chile', ZA: 'South Africa',
 };
 
-// Common US cities that appear without a state code in Greenhouse data
+// Greenhouse sometimes sends just a city name without a state.
+// I use this map to fill in the state so it groups correctly in the filter.
 const KNOWN_US_CITIES: Record<string, string> = {
   'sf': 'San Francisco, CA',         'san francisco': 'San Francisco, CA',
   'nyc': 'New York, NY',             'new york': 'New York, NY',
@@ -128,7 +141,8 @@ const KNOWN_US_CITIES: Record<string, string> = {
   'salt lake city': 'Salt Lake City, UT', 'las vegas': 'Las Vegas, NV',
 };
 
-// Common international cities that appear without a country in Greenhouse data
+// Same idea for international cities — "Paris" alone becomes "Paris, France"
+// so it groups under France in the filter instead of appearing as its own entry
 const KNOWN_INTL_CITIES: Record<string, string> = {
   'paris': 'Paris, France',             'london': 'London, England',
   'berlin': 'Berlin, Germany',          'amsterdam': 'Amsterdam, Netherlands',
@@ -154,18 +168,21 @@ const KNOWN_INTL_CITIES: Record<string, string> = {
   'cape town': 'Cape Town, South Africa', 'nairobi': 'Nairobi, Kenya',
 };
 
+// Greenhouse location strings are all over the place — companies enter whatever they want.
+// This function handles every weird format I've seen and turns it into a clean
+// "City, ST" (US) or "City, Country" (international) string.
 function normalizeGreenhouseLocation(raw: string | null): string | null {
   if (!raw) return null;
   const s = raw.trim();
   if (!s) return null;
 
-  // Non-location strings
+  // "In-Office" isn't a real location, so I drop it
   if (/^in[-\s]?office$/i.test(s)) return null;
 
-  // United States aliases
+  // Various ways companies write "United States"
   if (/^(usa|u\.s\.a\.|united states of america)$/i.test(s)) return 'United States';
 
-  // 3-letter ISO country codes  e.g. "CAN", "GBR", "DEU"
+  // 3-letter ISO country codes like "CAN", "GBR", "DEU"
   const ISO3: Record<string, string> = {
     USA: 'United States', CAN: 'Canada',  GBR: 'United Kingdom', DEU: 'Germany',
     FRA: 'France',        AUS: 'Australia', IND: 'India',         CHN: 'China',
@@ -183,9 +200,10 @@ function normalizeGreenhouseLocation(raw: string | null): string | null {
   if (/^[A-Z]{3}$/.test(s) && ISO3[s]) return ISO3[s];
 
   if (/^remote$/i.test(s)) return 'Remote';
+  // Regional "remote" labels like "APAC - Remote" or "EMEA - Remote"
   if (/^(apac|emea|americas|latam|global)\s*[-–]\s*remote$/i.test(s)) return 'Remote';
 
-  // Semicolon-separated multi-location: normalize each part
+  // Some companies list multiple locations separated by semicolons — I normalize each one
   if (s.includes(';')) {
     const parts = s.split(';')
       .map(p => normalizeGreenhouseLocation(p.trim()))
@@ -194,7 +212,7 @@ function normalizeGreenhouseLocation(raw: string | null): string | null {
     return unique.length > 0 ? unique.join(' / ') : null;
   }
 
-  // Anything containing "remote" → Remote
+  // Anything that contains "remote" anywhere (e.g. "Colombia, Remote") → just Remote
   if (/\bremote\b/i.test(s)) return 'Remote';
 
   // "US > State > City" format  e.g. "US > Arizona > Phoenix"
@@ -205,12 +223,13 @@ function normalizeGreenhouseLocation(raw: string | null): string | null {
     return code ? `${city}, ${code}` : `${city}, US`;
   }
 
-  // "Country > ..." or any arrow format → extract first segment as country
+  // "Country > City" or any other arrow format — I just extract the country
   if (s.includes('>')) {
     return titleCase(s.split('>')[0].replace(/[()]/g, '').trim()) || null;
   }
 
-  // "XX-CityOrLabel" country-code or US-state-code prefix  e.g. "ES-Barcelona", "NL-Hub"
+  // "XX-CityOrLabel" — either a US state prefix or a country code prefix
+  // e.g. "ES-Barcelona" → Spain, "NL-Hub" → Netherlands, "CA-Toronto" → Toronto, CA (California)
   const prefixM = s.match(/^([A-Z]{2})-(.+)$/);
   if (prefixM) {
     const code = prefixM[1];
@@ -218,20 +237,21 @@ function normalizeGreenhouseLocation(raw: string | null): string | null {
     if (COUNTRY_CODE_PREFIXES[code]) return COUNTRY_CODE_PREFIXES[code];
   }
 
-  // "City, ST United States" (missing comma before country)  e.g. "San Mateo, CA United States"
+  // "City, ST United States" with a missing comma before the country
+  // e.g. "San Mateo, CA United States" → "San Mateo, CA"
   const missingComma = s.match(/^(.+,\s*[A-Z]{2})\s+United States$/i);
   if (missingComma) return missingComma[1].trim();
 
   const parts = s.split(',').map(p => p.trim()).filter(Boolean);
   if (parts.length >= 2) {
-    // Strip trailing "United States" / "US"
+    // Strip trailing "United States" or "US" — some companies append it redundantly
     const trimmed = /^(united states|us)$/i.test(parts[parts.length - 1])
       ? parts.slice(0, -1)
       : parts;
 
     if (trimmed.length >= 2) {
       const last = trimmed[trimmed.length - 1];
-      // Full US state name → "City, ST"  e.g. "South San Francisco, California"
+      // "City, Full State Name" e.g. "South San Francisco, California" → "South San Francisco, CA"
       const stateCode = STATE_CODES[last.toLowerCase()];
       if (stateCode) return `${trimmed[0]}, ${stateCode}`;
       // International "City, Country" — keep as-is
@@ -240,7 +260,7 @@ function normalizeGreenhouseLocation(raw: string | null): string | null {
     return trimmed[0];
   }
 
-  // Single word/phrase — check known city maps
+  // Single word or short phrase — check my known city lookup tables
   const lower = s.toLowerCase();
   const knownUs = KNOWN_US_CITIES[lower];
   if (knownUs !== undefined) return knownUs || null;
@@ -250,10 +270,10 @@ function normalizeGreenhouseLocation(raw: string | null): string | null {
   return s;
 }
 
-// ─── Greenhouse ──────────────────────────────────────────────────────────────
+// Greenhouse
 
+// The list of companies I pull from Greenhouse's public job board API
 const GREENHOUSE_COMPANIES = [
-  // From leaderboard — active Greenhouse boards with internship listings
   'ey', 'cloudflare', 'didi', 'alo', 'thesocialhub', 'ses', 'roku', 'celonis',
   'anymindgroup', 'munichre', 'sonypicturesentertainment', 'snowflake',
   'revolutionmedicines', 'authenticbrands', 'internshiplist', 'asm', 'astranis',
@@ -273,6 +293,7 @@ const GREENHOUSE_COMPANIES = [
   'workato', 'toast', 'ripple', 'block', 'point72', 'virtu', 'verkada',
 ];
 
+// Fetches internship listings from a company's Greenhouse job board and normalizes the data
 async function fetchGreenhouse(company: string): Promise<Listing[]> {
   try {
     const res = await fetch(
@@ -300,14 +321,17 @@ async function fetchGreenhouse(company: string): Promise<Listing[]> {
   }
 }
 
-// ─── GitHub ──────────────────────────────────────────────────────────────────
+// GitHub
 
+// Community-maintained repos that track active internship listings.
+// SimplifyJobs uses an HTML table format; vanshb03 uses the older markdown pipe table format.
 const GITHUB_REPOS = [
   { owner: 'SimplifyJobs', repo: 'Summer2026-Internships' },
   { owner: 'vanshb03',     repo: 'Summer2027-Internships' },
 ];
 
-// Parses the HTML <table> format used by SimplifyJobs repos.
+// Parses the HTML <table> format that SimplifyJobs switched to.
+// Rows with "↳" in the company column are sub-roles — I carry the last company name forward.
 // deno-lint-ignore no-explicit-any
 function parseHtmlTable(content: string): Listing[] {
   const jobs: Listing[] = [];
@@ -326,7 +350,6 @@ function parseHtmlTable(content: string): Listing[] {
 
     const [companyCol, roleCol, locationCol, linkCol] = cols;
 
-    // Company: extract from <a> tag, or carry forward last for ↳ rows
     const rawCompanyText = companyCol.replace(/<[^>]+>/g, '').replace(/[🔥🔒]/g, '').trim();
     let company: string;
     if (rawCompanyText === '↳') {
@@ -354,7 +377,7 @@ function parseHtmlTable(content: string): Listing[] {
   return jobs;
 }
 
-// Parses the legacy markdown pipe-table format used by some repos.
+// Parses the older markdown pipe-table format that some repos still use
 function parsePipeTable(content: string): Listing[] {
   const lines = content.split('\n');
   const jobs: Listing[] = [];
@@ -364,7 +387,7 @@ function parsePipeTable(content: string): Listing[] {
   for (const line of lines) {
     if (!line.trim().startsWith('|')) { rowsInTable = 0; continue; }
     rowsInTable++;
-    if (rowsInTable <= 2) continue; // header + separator
+    if (rowsInTable <= 2) continue; // skip header row and separator
 
     const cols = line.split('|').map(c => c.trim()).filter(Boolean);
     if (cols.length < 4) continue;
@@ -399,13 +422,15 @@ function parsePipeTable(content: string): Listing[] {
   return jobs;
 }
 
+// Auto-detects which format the README uses and calls the right parser
 function parseGithubReadme(content: string): Listing[] {
   return /<table[\s>]/i.test(content)
     ? parseHtmlTable(content)
     : parsePipeTable(content);
 }
 
-// Tries dev → main → master so repos with a dev branch get the freshest data.
+// Fetches the README from a GitHub repo, trying dev → main → master in order.
+// Returns as soon as it finds a branch with actual listings.
 async function fetchGithubRepo(owner: string, repo: string, token?: string): Promise<Listing[]> {
   const headers: Record<string, string> = { 'User-Agent': 'SimplyIntern/1.0' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -426,8 +451,10 @@ async function fetchGithubRepo(owner: string, repo: string, token?: string): Pro
   return [];
 }
 
-// ─── Main handler ─────────────────────────────────────────────────────────────
-
+// Main handler
+// This runs on a daily schedule. It pulls fresh listings from Greenhouse and GitHub,
+// deduplicates by URL, upserts everything to the DB, and cleans up anything
+// that hasn't been seen in the last 30 days.
 Deno.serve(async (_req: Request) => {
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -435,7 +462,7 @@ Deno.serve(async (_req: Request) => {
   );
   const githubToken = Deno.env.get('GITHUB_TOKEN');
 
-  // Fetch all sources in parallel
+  // Fetch all sources in parallel to keep the function fast
   const [ghResults, gitResults] = await Promise.all([
     Promise.all(GREENHOUSE_COMPANIES.map(fetchGreenhouse)),
     Promise.all(GITHUB_REPOS.map(({ owner, repo }) => fetchGithubRepo(owner, repo, githubToken))),
@@ -446,7 +473,7 @@ Deno.serve(async (_req: Request) => {
     ...gitResults.flat(),
   ];
 
-  // Deduplicate by URL
+  // Deduplicate by URL so the same listing from two sources doesn't appear twice
   const seen = new Set<string>();
   const unique = allJobs.filter(j => {
     if (seen.has(j.url)) return false;
@@ -454,7 +481,7 @@ Deno.serve(async (_req: Request) => {
     return true;
   });
 
-  // Upsert in batches of 500
+  // Upsert in batches of 500 to stay within Supabase request size limits
   let upserted = 0;
   for (let i = 0; i < unique.length; i += 500) {
     const batch = unique.slice(i, i + 500);
@@ -465,7 +492,7 @@ Deno.serve(async (_req: Request) => {
     else console.error('Upsert batch error:', error.message);
   }
 
-  // Delete listings not refreshed in 30 days
+  // Remove listings that haven't been refreshed in 30 days — they're probably closed
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const { count: removed } = await supabase
     .from('listings')

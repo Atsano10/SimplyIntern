@@ -4,17 +4,17 @@ let currentOffset  = 0;
 let isLoading      = false;
 let hasMore        = true;
 
-// ── MULTI-SELECT ──────────────────────────────────────────────────────────────
-
+// Multi-select filter state - I track which values are checked in each dropdown
 const msState = {
   locations:  new Set(),
   industries: new Set(),
   jobTypes:   new Set(),
 };
 
-// Maps country/region name → array of ilike substrings to match against location field
+// Maps each filter label (e.g. 'California') to the DB ilike patterns I'll use to query it
 const locationPatternMap = {};
 
+// Builds the checkbox list inside a filter panel from an array of { value, label } items
 function msInit(id, stateKey, items) {
   const panel = document.getElementById(id + '_panel');
   items.forEach(({ value, label }) => {
@@ -32,6 +32,7 @@ function msInit(id, stateKey, items) {
   });
 }
 
+// Updates the filter button label to reflect what's currently selected
 function msRefresh(id, stateKey) {
   const btn = document.getElementById(id + '_btn');
   const set = msState[stateKey];
@@ -46,6 +47,7 @@ function msRefresh(id, stateKey) {
   }
 }
 
+// Opens or closes a filter panel, closing any other open ones first
 function msToggle(id) {
   const panel  = document.getElementById(id + '_panel');
   const btn    = document.getElementById(id + '_btn');
@@ -58,6 +60,7 @@ function msToggle(id) {
   }
 }
 
+// Close any open filter panel when the user clicks outside of it
 document.addEventListener('click', e => {
   if (!e.target.closest('.filter_multi')) {
     document.querySelectorAll('.filter_multi_panel.open').forEach(p => p.classList.remove('open'));
@@ -65,8 +68,9 @@ document.addEventListener('click', e => {
   }
 });
 
-// ── LOCATION LOADING ──────────────────────────────────────────────────────────
+// Location filter
 
+// Maps 2-letter US state codes to full state names for the filter dropdown
 const STATE_NAMES = {
   AL: 'Alabama',       AK: 'Alaska',         AZ: 'Arizona',        AR: 'Arkansas',
   CA: 'California',    CO: 'Colorado',        CT: 'Connecticut',    DE: 'Delaware',
@@ -84,6 +88,8 @@ const STATE_NAMES = {
 };
 const US_STATES = new Set(Object.keys(STATE_NAMES));
 
+// Pulls all unique locations from the DB, groups them into state/country buckets,
+// and populates the location dropdown. Remote always appears first.
 async function loadLocationFilter() {
   try {
     const { data } = await client
@@ -97,7 +103,7 @@ async function loadLocationFilter() {
       const loc = (row.location || '').trim();
       if (!loc) return;
 
-      // Handle multi-location strings joined by " / "
+      // A single listing can have multiple locations joined by " / " (e.g. "New York, NY / Remote")
       const parts = loc.split(' / ').map(p => p.trim()).filter(Boolean);
       parts.forEach(part => {
         if (/\bremote\b/i.test(part)) {
@@ -106,7 +112,7 @@ async function loadLocationFilter() {
           return;
         }
 
-        // US: ends with ", ST" where ST is a known state code
+        // US locations end with a known 2-letter state code like ", NY"
         const stateMatch = part.match(/,\s*([A-Z]{2})\s*$/);
         if (stateMatch && US_STATES.has(stateMatch[1])) {
           const stateName = STATE_NAMES[stateMatch[1]];
@@ -115,7 +121,7 @@ async function loadLocationFilter() {
           return;
         }
 
-        // International: use country name (last comma segment or full string)
+        // International - I use the last comma segment as the country name
         const locParts = part.split(',');
         const country = locParts.length >= 2
           ? locParts[locParts.length - 1].trim()
@@ -126,7 +132,8 @@ async function loadLocationFilter() {
       });
     });
 
-    // Merge known aliases into canonical names so duplicates don't appear in the filter.
+    // Some companies use abbreviations or alternate names for the same place.
+    // I merge these into canonical labels so duplicates don't appear in the filter.
     const LOCATION_ALIASES = {
       // United States variants
       'USA': 'United States', 'U.S.': 'United States',
@@ -134,13 +141,15 @@ async function loadLocationFilter() {
       // United Kingdom variants
       'UK': 'United Kingdom', 'England': 'United Kingdom',
       'Great Britain': 'United Kingdom', 'GBR': 'United Kingdom',
-      // City-only entries that should roll up to their state
-      'Nyc': 'New York', 'NYC': 'New York', 'La': 'California',
-      // Cities that should roll up to their country
+      // City abbreviations that should roll up to their state
+      'Nyc': 'New York', 'NYC': 'New York',
+      'La': 'California', 'Sf': 'California', 'SF': 'California',
+      'Seattle': 'Washington',
+      // Standalone cities that should roll up to their country
       'Rotterdam': 'Netherlands', 'Amsterdam': 'Netherlands',
-      // Brazilian state codes
+      // Brazilian state codes (MG = Minas Gerais, SP = São Paulo, etc.)
       'MG': 'Brazil', 'SP': 'Brazil', 'RJ': 'Brazil', 'RS': 'Brazil',
-      // 3-letter ISO codes → canonical country names
+      // 3-letter ISO country codes that sometimes slip through from Greenhouse
       'CAN': 'Canada',    'DEU': 'Germany',   'FRA': 'France',
       'AUS': 'Australia', 'IND': 'India',     'CHN': 'China',
       'JPN': 'Japan',     'KOR': 'South Korea', 'SGP': 'Singapore',
@@ -161,22 +170,24 @@ async function loadLocationFilter() {
       delete cpMap[alias];
     });
 
-    // Drop junk entries: fragments starting with "or ", single letters, nonsense strings
+    // Drop anything that's clearly not a real location (e.g. "or Paris" fragments, single chars)
     Object.keys(cpMap).forEach(key => {
       if (/^or\s/i.test(key) || key.length <= 1) delete cpMap[key];
     });
 
     Object.keys(cpMap).forEach(c => { locationPatternMap[c] = [...cpMap[c]]; });
   } catch {
-    locationPatternMap['Remote']         = ['remote'];
-    locationPatternMap['New York']        = [', NY'];
-    locationPatternMap['California']      = [', CA'];
-    locationPatternMap['Illinois']        = [', IL'];
-    locationPatternMap['Massachusetts']   = [', MA'];
-    locationPatternMap['Washington']      = [', WA'];
-    locationPatternMap['Texas']           = [', TX'];
+    // If the DB query fails I fall back to a hardcoded set of common US states
+    locationPatternMap['Remote']       = ['remote'];
+    locationPatternMap['New York']     = [', NY'];
+    locationPatternMap['California']   = [', CA'];
+    locationPatternMap['Illinois']     = [', IL'];
+    locationPatternMap['Massachusetts']= [', MA'];
+    locationPatternMap['Washington']   = [', WA'];
+    locationPatternMap['Texas']        = [', TX'];
   }
 
+  // Sort alphabetically, Remote always first
   const countries = Object.keys(locationPatternMap).sort((a, b) => {
     if (a === 'Remote') return -1;
     if (b === 'Remote') return 1;
@@ -185,7 +196,7 @@ async function loadLocationFilter() {
 
   msInit('ms_location', 'locations', countries.map(c => ({ value: c, label: c })));
 
-  // Add live-search input to the location panel (it has many options)
+  // The location panel has a lot of options so I add a live search box at the top
   const searchEl = document.createElement('input');
   searchEl.type = 'text';
   searchEl.placeholder = 'Search locations…';
@@ -199,13 +210,39 @@ async function loadLocationFilter() {
   document.getElementById('ms_location_panel').prepend(searchEl);
 }
 
-// ── SEARCH ────────────────────────────────────────────────────────────────────
+// Search
 
 document.getElementById('search_btn').addEventListener('click', performSearch);
 document.getElementById('search_input').addEventListener('keydown', e => {
   if (e.key === 'Enter') performSearch();
 });
 
+// Resets the keyword input, unchecks all filter options, and snaps the button labels back to default
+function clearFilters() {
+  document.getElementById('search_input').value = '';
+
+  [
+    { id: 'ms_location',  key: 'locations'  },
+    { id: 'ms_industry',  key: 'industries' },
+    { id: 'ms_type',      key: 'jobTypes'   },
+  ].forEach(({ id, key }) => {
+    msState[key].clear();
+    document.querySelectorAll(`#${id}_panel input[type="checkbox"]`).forEach(cb => {
+      cb.checked = false;
+    });
+    // Also reset the location search box and unhide any filtered-out options
+    const searchBox = document.querySelector(`#${id}_panel .ms_search`);
+    if (searchBox) {
+      searchBox.value = '';
+      document.querySelectorAll(`#${id}_panel .ms_option`).forEach(opt => {
+        opt.style.display = '';
+      });
+    }
+    msRefresh(id, key);
+  });
+}
+
+// Listens for scroll position and triggers loadMore when the user gets near the bottom
 window.addEventListener('scroll', () => {
   const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
   if (scrollTop + clientHeight >= scrollHeight - 300 && !isLoading && hasMore) {
@@ -213,10 +250,11 @@ window.addEventListener('scroll', () => {
   }
 });
 
+// Runs a fresh search with the current filters, replacing any existing results
 async function performSearch() {
   document.getElementById('empty_state').style.display = 'none';
 
-  // Expand selected countries into ilike patterns
+  // Expand each selected location label into its DB query patterns
   const locationPatterns = [...msState.locations].flatMap(c => locationPatternMap[c] || [c]);
 
   currentFilters = {
@@ -244,6 +282,7 @@ async function performSearch() {
   }
 }
 
+// Fetches the next page of results and appends them below the existing ones
 async function loadMore() {
   if (isLoading || !hasMore) return;
   isLoading = true;
@@ -267,6 +306,9 @@ async function loadMore() {
   isLoading = false;
 }
 
+// Builds and inserts job cards into the list.
+// I also check localStorage here so listings the user already applied to
+// show their green "Applied ✓" state immediately without needing to re-click.
 function renderResults(jobs, append) {
   const jobList = document.getElementById('job_list');
 
@@ -279,6 +321,9 @@ function renderResults(jobs, append) {
   }
 
   if (jobs.length === 0) return;
+
+  // Read once outside the loop so I'm not hitting localStorage on every card
+  const appliedApps = JSON.parse(localStorage.getItem('si_applications') || '[]');
 
   const fragment = document.createDocumentFragment();
   jobs.forEach(job => {
@@ -301,15 +346,25 @@ function renderResults(jobs, append) {
         <a class="info_link" href="${esc(job.url)}" target="_blank" rel="noopener noreferrer">View Listing</a>
       </div>
     `;
-    div.querySelector('.apply_btn').addEventListener('click', function () {
-      markApplied(this);
-    });
+
+    const btn = div.querySelector('.apply_btn');
+
+    // Restore the applied state if this listing was previously marked
+    const prior = appliedApps.find(a => a.position === job.title && a.company === job.company);
+    if (prior) {
+      btn.textContent = 'Applied ✓';
+      btn.classList.add('applied');
+      if (prior.id) btn.dataset.appId = String(prior.id);
+    }
+
+    btn.addEventListener('click', function () { markApplied(this); });
     fragment.appendChild(div);
   });
 
   jobList.appendChild(fragment);
 }
 
+// Converts a date string into something readable like "Posted 3 days ago"
 function timeAgo(dateStr) {
   if (!dateStr) return 'Recently posted';
   const then = new Date(dateStr);
@@ -324,6 +379,7 @@ function timeAgo(dateStr) {
   return `Posted ${Math.floor(days / 30)} months ago`;
 }
 
+// Escapes strings before inserting them into innerHTML to prevent XSS
 function esc(str) {
   if (!str) return '';
   return String(str)
@@ -333,6 +389,8 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
+// Saves an application to localStorage and Supabase, then marks the button green.
+// Clicking the green button again calls unmarkApplied to undo it.
 async function markApplied(btn) {
   if (btn.classList.contains('applied')) {
     await unmarkApplied(btn);
@@ -376,6 +434,7 @@ async function markApplied(btn) {
   btn.classList.add('applied');
 }
 
+// Removes the application from localStorage and the DB, then resets the button to its default state
 async function unmarkApplied(btn) {
   const appId = btn.dataset.appId;
 
@@ -397,7 +456,7 @@ async function unmarkApplied(btn) {
   delete btn.dataset.appId;
 }
 
-// ── INIT ──────────────────────────────────────────────────────────────────────
+// Init - set up the static filters and load locations from the DB
 
 msInit('ms_industry', 'industries', [
   { value: 'tech',      label: 'Technology' },

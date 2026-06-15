@@ -9,7 +9,7 @@ body {
     flex-direction: column;
 }
 
-/* ── SEARCH ENGINE ── */
+/* Search bar and filter row */
 .search_engine {
     background-color: #FFFFFA;
     border-bottom: 2px solid #702632;
@@ -66,7 +66,7 @@ body {
     border-color: #702632;
 }
 
-/* ── MULTI-SELECT FILTERS ── */
+/* Multi-select filter dropdowns */
 .filter_multi {
     position: relative;
     flex: 1;
@@ -140,7 +140,7 @@ body {
     display: block;
 }
 
-/* Location panel: wider + 2-column grid to fit many countries/states */
+/* The location panel has a lot of options so I make it wider and use a 2-column grid */
 #ms_location_panel {
     min-width: 320px;
     padding: 0;
@@ -151,7 +151,7 @@ body {
     grid-template-columns: 1fr 1fr;
 }
 
-/* Search input inside location panel — spans both columns */
+/* The search input should span across both columns, not just one */
 .ms_search {
     grid-column: 1 / -1;
     display: block;
@@ -215,13 +215,32 @@ body {
     background-color: #080705;
 }
 
-/* ── RESULTS AREA ── */
+.clear_btn {
+    padding: 8px 16px;
+    background-color: transparent;
+    color: #702632;
+    border: 1.5px solid #d0b0b5;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: 'Saira', sans-serif;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.clear_btn:hover {
+    border-color: #702632;
+    background-color: #fdf5f6;
+}
+
+/* Results area below the search bar */
 .results_area {
     flex: 1;
     padding: 28px 48px 40px;
 }
 
-/* ── EMPTY STATE ── */
+/* Empty state shown before the user runs a search */
 .empty_state {
     text-align: center;
     padding: 80px 20px;
@@ -240,7 +259,7 @@ body {
     opacity: 0.8;
 }
 
-/* ── JOB LISTINGS ── */
+/* Individual job listing cards */
 .job_list {
     display: none;
     flex-direction: column;
@@ -364,7 +383,7 @@ body {
     font-size: 16px;
 }
 
-/* ── DARK MODE MULTI-SELECT ── */
+/* Dark mode overrides for the filter dropdowns */
 body.dark .filter_multi_btn {
     background: #241819;
     color: #f0e8ea;
@@ -390,8 +409,16 @@ body.dark .ms_search {
     color: #f0e8ea;
 }
 body.dark .ms_search:focus { border-color: #eeb9c2; }
+body.dark .clear_btn {
+    color: #eeb9c2;
+    border-color: #4a3035;
+}
+body.dark .clear_btn:hover {
+    border-color: #eeb9c2;
+    background-color: #2c2022;
+}
 
-/* ── DARK MODE ── */
+/* Dark mode overrides for everything else */
 body.dark .search_engine {
     background: #2c2022;
     border-bottom-color: #702632;
@@ -443,7 +470,7 @@ body.dark .apply_btn.applied:hover {
 }
 body.dark .no_results { color: #eeb9c2; }
 
-/* ── MOBILE ── */
+/* Mobile layout — stack things vertically on small screens */
 @media (max-width: 640px) {
     .search_engine {
         padding: 12px 16px;
