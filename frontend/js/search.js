@@ -170,6 +170,21 @@ async function loadLocationFilter() {
       delete cpMap[alias];
     });
 
+    // Aggregate all individual US state patterns under "United States" so selecting
+    // "United States" returns listings from every state, not just ones that literally
+    // say "USA" or "United States" in the location field.
+    const usStatePatterns = new Set();
+    Object.keys(STATE_NAMES).forEach(code => {
+      const stateName = STATE_NAMES[code];
+      if (cpMap[stateName]) {
+        for (const p of cpMap[stateName]) usStatePatterns.add(p);
+      }
+    });
+    if (usStatePatterns.size > 0) {
+      if (!cpMap['United States']) cpMap['United States'] = new Set();
+      for (const p of usStatePatterns) cpMap['United States'].add(p);
+    }
+
     // Drop anything that's clearly not a real location (e.g. "or Paris" fragments, single chars)
     Object.keys(cpMap).forEach(key => {
       if (/^or\s/i.test(key) || key.length <= 1) delete cpMap[key];

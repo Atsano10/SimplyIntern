@@ -20,14 +20,18 @@ async function fetchJobs(filters = {}, offset = 0, limit = 50) {
   }
 
   if (filters.locationPatterns && filters.locationPatterns.length > 0) {
-    // US state patterns start with "," (e.g. ", NY") so I use substring match for those.
+    // US state patterns start with "," (e.g. ", NY") so we use substring match for those.
     // Country names use end-of-string match to avoid false positives —
     // e.g. "India" would otherwise match "Indianapolis, IN" with a plain substring search.
-    const orClauses = filters.locationPatterns.map(p =>
-      (p.startsWith(',') || p === 'remote')
-        ? `location.ilike.%${p}%`
-        : `location.ilike.%${p}`
-    ).join(',');
+    // Values containing commas are wrapped in double-quotes per PostgREST spec so the comma
+    // inside the ilike pattern isn't misread as an OR-condition separator.
+    const orClauses = filters.locationPatterns.map(p => {
+      const raw = (p.startsWith(',') || p === 'remote')
+        ? `%${p}%`
+        : `%${p}`;
+      const safe = raw.includes(',') ? `"${raw}"` : raw;
+      return `location.ilike.${safe}`;
+    }).join(',');
     query = query.or(orClauses);
   }
 
