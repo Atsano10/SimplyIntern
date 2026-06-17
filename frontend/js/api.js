@@ -8,53 +8,91 @@ const INDUSTRY_KEYWORDS = {
   research: ['research', 'laboratory', 'biology', 'chemistry', 'physics', 'ecology', 'neuroscience', 'genomics', 'scientific research'],
 };
 
-// Builds and runs the Supabase query based on whatever filters are currently active.
-// Returns one page of results — offset and limit control pagination.
+// Title keywords per job type. I match on the title instead of the DB `type` field because
+// the scraper sometimes tags things wrong (e.g. "External Communications" -> externship).
+const TYPE_PATTERNS = {
+  'internship': ['intern'],
+  'co-op':      ['co-op', 'co op', 'coop'],
+  'externship': ['externship', 'extern '],
+};
+
+// The dataset is small (a few hundred listings), so instead of building fragile PostgREST
+// `.or()` queries with escaped commas, I pull every listing once, cache it, and do all the
+// filtering in plain JavaScript. This is far easier to reason about and debug, and it
+// removes a whole class of query-encoding bugs that were silently returning zero results.
+let _allListings = null;
+
+// Fetches every listing, paging in 1000-row chunks (Supabase caps a single request at 1000).
+// Results are cached for the page session and sorted newest-first once, up front.
+async function loadAllListings() {
+  if (_allListings) return _allListings;
+
+  const CHUNK = 1000;
+  const rows = [];
+  for (let from = 0; ; from += CHUNK) {
+    const { data, error } = await client
+      .from('listings')
+      .select('*')
+      .order('posted_at', { ascending: false, nullsFirst: false })
+      .range(from, from + CHUNK - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < CHUNK) break;
+  }
+  _allListings = rows;
+  return _allListings;
+}
+
+// Converts a SQL ILIKE pattern (where % is a wildcard) into an anchored, case-insensitive
+// JS RegExp with the same semantics, so "%, NY" matches "New York, NY" but not ", Denmark".
+function ilikeToRegExp(pattern) {
+  const escaped = pattern
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // escape regex metachars (incl. literal % handled next)
+    .replace(/%/g, '.*');                   // % -> wildcard
+  return new RegExp('^' + escaped + '$', 'i');
+}
+
+function matchesKeyword(job, keyword) {
+  if (!keyword) return true;
+  const k = keyword.toLowerCase();
+  return (job.title || '').toLowerCase().includes(k)
+      || (job.company || '').toLowerCase().includes(k);
+}
+
+function matchesLocation(job, patterns) {
+  if (!patterns || patterns.length === 0) return true;
+  const loc = job.location || '';
+  return patterns.some(p => ilikeToRegExp(p).test(loc));
+}
+
+function matchesIndustry(job, industries) {
+  if (!industries || industries.length === 0) return true;
+  const title = (job.title || '').toLowerCase();
+  const kws = industries.flatMap(ind => INDUSTRY_KEYWORDS[ind] || []);
+  return kws.some(k => title.includes(k.toLowerCase()));
+}
+
+function matchesType(job, jobTypes) {
+  if (!jobTypes || jobTypes.length === 0) return true;
+  const title = (job.title || '').toLowerCase();
+  const patterns = jobTypes.flatMap(t => TYPE_PATTERNS[t] || [t]);
+  return patterns.some(p => title.includes(p.toLowerCase()));
+}
+
+// Applies every active filter (filters are AND-ed; options within one filter are OR-ed).
+function applyFilters(listings, filters = {}) {
+  return listings.filter(job =>
+    matchesKeyword(job, filters.keyword) &&
+    matchesLocation(job, filters.locationPatterns) &&
+    matchesIndustry(job, filters.industries) &&
+    matchesType(job, filters.jobTypes)
+  );
+}
+
+// Returns one page of filtered results. Keeps the same (filters, offset, limit) signature the
+// search UI already uses for infinite scroll, but everything runs client-side now.
 async function fetchJobs(filters = {}, offset = 0, limit = 50) {
-  let query = client.from('listings').select('*');
-
-  if (filters.keyword) {
-    query = query.or(
-      `title.ilike.%${filters.keyword}%,company.ilike.%${filters.keyword}%`
-    );
-  }
-
-  if (filters.locationPatterns && filters.locationPatterns.length > 0) {
-    // Each pattern is already a complete ilike value with wildcards in place
-    // (e.g. "%, NY", "%, NY /%", "%remote%"). Patterns are anchored to a part
-    // boundary upstream so a state code can't bleed into a country name.
-    // Values containing a comma must be wrapped in double-quotes per the PostgREST
-    // spec, otherwise the comma is misread as an OR-condition separator and the
-    // whole query silently returns nothing (this is why "New York" showed no results).
-    const orClauses = filters.locationPatterns
-      .map(p => p.includes(',') ? `location.ilike."${p}"` : `location.ilike.${p}`)
-      .join(',');
-    query = query.or(orClauses);
-  }
-
-  if (filters.industries && filters.industries.length > 0) {
-    const kws = filters.industries.flatMap(ind => INDUSTRY_KEYWORDS[ind] || []);
-    if (kws.length > 0) {
-      query = query.or(kws.map(k => `title.ilike.%${k}%`).join(','));
-    }
-  }
-
-  if (filters.jobTypes && filters.jobTypes.length > 0) {
-    // I match by title instead of the DB type field because the scraper sometimes tags things wrong
-    // (e.g. a role called "External Communications" was getting tagged as an externship)
-    const TYPE_PATTERNS = {
-      'internship': ['intern'],
-      'co-op':      ['co-op', 'co op', 'coop'],
-      'externship': ['externship', 'extern '],
-    };
-    const patterns = filters.jobTypes.flatMap(t => TYPE_PATTERNS[t] || [t]);
-    query = query.or(patterns.map(p => `title.ilike.%${p}%`).join(','));
-  }
-
-  const { data, error } = await query
-    .order('posted_at', { ascending: false, nullsFirst: false })
-    .range(offset, offset + limit - 1);
-
-  if (error) throw error;
-  return data ?? [];
+  const all = await loadAllListings();
+  const filtered = applyFilters(all, filters);
+  return filtered.slice(offset, offset + limit);
 }
