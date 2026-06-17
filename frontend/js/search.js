@@ -108,16 +108,29 @@ async function loadLocationFilter() {
       parts.forEach(part => {
         if (/\bremote\b/i.test(part)) {
           if (!cpMap['Remote']) cpMap['Remote'] = new Set();
-          cpMap['Remote'].add('remote');
+          cpMap['Remote'].add('%remote%');
           return;
         }
 
         // US locations end with a known 2-letter state code like ", NY"
         const stateMatch = part.match(/,\s*([A-Z]{2})\s*$/);
         if (stateMatch && US_STATES.has(stateMatch[1])) {
-          const stateName = STATE_NAMES[stateMatch[1]];
+          const code      = stateMatch[1];
+          const stateName = STATE_NAMES[code];
+          // Anchor the state code to a part boundary: either the end of the whole
+          // location string ("%, NY") or right before a " / " separator in a
+          // multi-location listing ("%, NY /%"). A plain substring like "%, DE%"
+          // would wrongly match countries — ", DEnmark", ", INdia", ", COlombia" —
+          // which is why "United States" was surfacing Denmark, India, etc.
+          const patterns = [`%, ${code}`, `%, ${code} /%`];
           if (!cpMap[stateName]) cpMap[stateName] = new Set();
-          cpMap[stateName].add(`, ${stateMatch[1]}`);
+          // Every US state also rolls up under the "United States" filter option,
+          // so selecting it returns listings from every state.
+          if (!cpMap['United States']) cpMap['United States'] = new Set();
+          for (const pat of patterns) {
+            cpMap[stateName].add(pat);
+            cpMap['United States'].add(pat);
+          }
           return;
         }
 
@@ -128,7 +141,10 @@ async function loadLocationFilter() {
           : part;
         if (!country) return;
         if (!cpMap[country]) cpMap[country] = new Set();
-        cpMap[country].add(country);
+        // Anchor the country to the end of the string or before a " / " separator
+        // so "India" matches "Mumbai, India" but not "Indianapolis, IN".
+        cpMap[country].add(`%${country}`);
+        cpMap[country].add(`%${country} /%`);
       });
     });
 
@@ -170,21 +186,6 @@ async function loadLocationFilter() {
       delete cpMap[alias];
     });
 
-    // Aggregate all individual US state patterns under "United States" so selecting
-    // "United States" returns listings from every state, not just ones that literally
-    // say "USA" or "United States" in the location field.
-    const usStatePatterns = new Set();
-    Object.keys(STATE_NAMES).forEach(code => {
-      const stateName = STATE_NAMES[code];
-      if (cpMap[stateName]) {
-        for (const p of cpMap[stateName]) usStatePatterns.add(p);
-      }
-    });
-    if (usStatePatterns.size > 0) {
-      if (!cpMap['United States']) cpMap['United States'] = new Set();
-      for (const p of usStatePatterns) cpMap['United States'].add(p);
-    }
-
     // Drop anything that's clearly not a real location (e.g. "or Paris" fragments, single chars)
     Object.keys(cpMap).forEach(key => {
       if (/^or\s/i.test(key) || key.length <= 1) delete cpMap[key];
@@ -192,14 +193,15 @@ async function loadLocationFilter() {
 
     Object.keys(cpMap).forEach(c => { locationPatternMap[c] = [...cpMap[c]]; });
   } catch {
-    // If the DB query fails I fall back to a hardcoded set of common US states
-    locationPatternMap['Remote']       = ['remote'];
-    locationPatternMap['New York']     = [', NY'];
-    locationPatternMap['California']   = [', CA'];
-    locationPatternMap['Illinois']     = [', IL'];
-    locationPatternMap['Massachusetts']= [', MA'];
-    locationPatternMap['Washington']   = [', WA'];
-    locationPatternMap['Texas']        = [', TX'];
+    // If the DB query fails I fall back to a hardcoded set of common US states.
+    // Patterns are anchored the same way as the live ones: end-of-string or before " / ".
+    locationPatternMap['Remote']       = ['%remote%'];
+    locationPatternMap['New York']     = ['%, NY', '%, NY /%'];
+    locationPatternMap['California']   = ['%, CA', '%, CA /%'];
+    locationPatternMap['Illinois']     = ['%, IL', '%, IL /%'];
+    locationPatternMap['Massachusetts']= ['%, MA', '%, MA /%'];
+    locationPatternMap['Washington']   = ['%, WA', '%, WA /%'];
+    locationPatternMap['Texas']        = ['%, TX', '%, TX /%'];
   }
 
   // Sort alphabetically, Remote always first
@@ -270,7 +272,7 @@ async function performSearch() {
   document.getElementById('empty_state').style.display = 'none';
 
   // Expand each selected location label into its DB query patterns
-  const locationPatterns = [...msState.locations].flatMap(c => locationPatternMap[c] || [c]);
+  const locationPatterns = [...msState.locations].flatMap(c => locationPatternMap[c] || [`%${c}%`]);
 
   currentFilters = {
     keyword:          document.getElementById('search_input').value.trim(),
