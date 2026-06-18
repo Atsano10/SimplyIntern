@@ -7,51 +7,43 @@
     <link rel="stylesheet" href="css/styles.css" />
     <link rel="stylesheet" href="css/auth.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   </head>
-
   <body>
-    <div class = "background">
-        <div class = "login-wrapper">
-            <div class = "title">
-                <p> Welcome Back</p>
-            </div>
-            <div class = "info-sections">
-                <div class = "input-group">
-                    <label for = "username">Username</label>
-                    <input 
-                        type = "text" 
-                        id="username" 
-                        name="username" 
-                        required/>
-                </div>
-                <div class = "input-group">
-                    <label for = "password">Password</label>
-                    <input 
-                        type = "password" 
-                        id="password" 
-                        name="password"  
-                        required/>
-                </div>
-                <div class="log-in-div">
-                    <button type = "button" class="top-ls-button" onclick="logIn()">Log In</button>
-                </div>
-            </div>
-            <div class = "breaker">
-                <span>or</span>
-            </div>
-       <div class="google-div">
-        <button type="button" class="google-button" onclick="googleSignIn()">
-            <span>Continue with Google</span>
+    <div class="auth-page">
+      <div class="hero-panel">
+        <div class="hero-content">
+          <div class="hero-logo">SimplyIntern</div>
+          <h1 class="hero-title">Find internships that fit.</h1>
+          <p class="hero-desc">Browse and discover internship opportunities tailored to your field and location — all in one place.</p>
+          <ul class="hero-features">
+            <li>Thousands of curated listings</li>
+            <li>Filter by location, field, and more</li>
+            <li>Clean, distraction-free browsing</li>
+          </ul>
+        </div>
+      </div>
+      <div class="form-panel">
+        <div class="form-content">
+          <h2 class="form-title">Welcome back</h2>
+          <p class="form-subtitle">Log in to your account</p>
+          <div class="field-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" placeholder="Your username" required/>
+          </div>
+          <div class="field-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" placeholder="Your password" required/>
+          </div>
+          <button type="button" class="primary-btn" onclick="logIn()">Log In</button>
+          <div class="breaker"><span>or</span></div>
+          <button type="button" class="google-btn" onclick="googleSignIn()">
             <img src="images/google.webp" alt="" class="google-logo">
-        </button>
+            Continue with Google
+          </button>
+          <p class="auth-switch">Don't have an account? <a href="signup.html" class="auth-link">Sign up</a></p>
         </div>
-            <div class="sign-up-div">
-                <button type = "button" class="ls-button" onclick="window.location.href='signup.html'">Sign Up</button>
-            </div>
-        </div>
+      </div>
     </div>
     <script src="js/auth.js?v=2"></script>
   </body>
-
 </html>
