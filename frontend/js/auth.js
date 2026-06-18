@@ -108,10 +108,10 @@ async function logIn(){
 }
 
 async function googleSignIn() {
-    const {error } = await client.auth.signInWithOAuth({
+    const { error } = await client.auth.signInWithOAuth({
         provider: 'google',
         options: {
-            redirectTo: window.location.origin + '/username-setup.html'
+            redirectTo: window.location.origin + '/index.html'
         }
     })
 
@@ -119,60 +119,6 @@ async function googleSignIn() {
         alert(error.message)
         return
     }
-}
-
-async function saveUsername(){
-    const username = document.getElementById('username').value
-
-    const { data: { user } } = await client.auth.getUser()
-
-    const { data:existing } = await client
-        .from('profiles')
-        .select('username')
-        .eq('username' , username)
-        .single()
-
-    if(existing){
-        alert('Username already taken!')
-        return
-    }
-
-    const { error: insertError } = await client.from('profiles').insert({
-        id: user.id,
-        username: username,
-        email: user.email
-    })
-
-    if (insertError) {
-        console.error('Insert failed:', insertError.message)
-        alert('Something went wrong, please try again.')
-        return
-    }
-
-    window.location.href = 'search.html'
-}
-
-async function checkUsername (){
-    const { data: {user} } = await client.auth.getUser()
-
-    if (!user) {
-        window.location.href = 'index.html'
-        return
-    }
-
-    const { data:profile } = await client
-        .from('profiles')
-        .select('username')
-        .eq('id', user.id)
-        .single()
-
-    if(profile){
-        window.location.href = 'search.html'
-    }
-}
-
-if (window.location.pathname.includes('username-setup')) {
-    checkUsername()
 }
 
 async function checkSession() {
@@ -187,7 +133,35 @@ async function checkSession() {
         if (profile) {
             window.location.href = 'search.html'
         } else {
-            window.location.href = 'username-setup.html'
+            // Google OAuth user with no profile — auto-create one from email prefix
+            const emailPrefix = session.user.email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_')
+            let username = emailPrefix
+            let suffix = 1
+
+            while (true) {
+                const { data: taken } = await client
+                    .from('profiles')
+                    .select('username')
+                    .eq('username', username)
+                    .maybeSingle()
+
+                if (!taken) break
+                username = emailPrefix + suffix
+                suffix++
+            }
+
+            const { error: insertError } = await client.from('profiles').insert({
+                id: session.user.id,
+                username: username,
+                email: session.user.email
+            })
+
+            if (insertError) {
+                console.error('Profile creation failed:', insertError.message)
+                return
+            }
+
+            window.location.href = 'search.html'
         }
     }
 }
@@ -195,7 +169,6 @@ async function checkSession() {
 if (!window.location.pathname.includes('search') &&
     !window.location.pathname.includes('tracker') &&
     !window.location.pathname.includes('signup') &&
-    !window.location.pathname.includes('username-setup') &&
     !window.location.pathname.includes('settings') &&
     !window.location.pathname.includes('leaderboard')) {
     checkSession()
