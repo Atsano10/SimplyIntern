@@ -1,0 +1,13 @@
+# Generated at build time — contains injected env vars
+frontend/js/config.js
+
+# Local env files — never commit these
+.env
+.env.local
+.env*.local
+
+# macOS
+.DS_Store
+
+# Dependencies
+node_modules/
