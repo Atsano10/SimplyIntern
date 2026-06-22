@@ -1,12 +1,5 @@
 # Supabase project configuration
 # Docs: https://supabase.com/docs/guides/cli/config
 
-[project]
-ref = "mijakorauzqwzfffvcwb"
-
-# daily-refresh Edge Function
-# verify_jwt = false lets the cron scheduler call it without a user token
-# schedule   = cron expression — runs every day at 6am UTC
 [functions.daily-refresh]
 verify_jwt = false
-schedule   = "0 6 * * *"
