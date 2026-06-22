@@ -88,6 +88,3 @@ The `daily-refresh` Edge Function is deployed via Supabase and runs on a daily s
 | `profiles` | User accounts (username, leaderboard opt-out) |
 | `applications` | Per-user application records |
 
-## License
-
-MIT
