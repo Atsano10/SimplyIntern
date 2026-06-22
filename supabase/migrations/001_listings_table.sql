@@ -19,6 +19,7 @@ CREATE INDEX IF NOT EXISTS listings_posted_at_idx ON listings (posted_at DESC);
 ALTER TABLE listings ENABLE ROW LEVEL SECURITY;
 
 -- Anyone (logged in or not) can read listings
+DROP POLICY IF EXISTS "Public read" ON listings;
 CREATE POLICY "Public read" ON listings
   FOR SELECT USING (true);
 
