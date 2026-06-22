@@ -1,5 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "node scripts/inject-env.js"
+  "buildCommand": "node scripts/inject-env.js",
+  "outputDirectory": "."
 }
 
