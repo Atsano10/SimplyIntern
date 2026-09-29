@@ -97,10 +97,15 @@ function showSyncBanner(errorMsg) {
         'gap:12px',
     ].join(';');
     const msg = errorMsg ? `⚠ Sync failed: "${errorMsg}"` : '⚠ Sync failed — unknown error.';
-    banner.innerHTML = `
-        <span>${msg}</span>
-        <button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;font-size:16px;color:inherit;flex-shrink:0;">✕</button>
-    `;
+    // Build with DOM methods: textContent can't execute markup (no esc needed),
+    // and the close button uses addEventListener instead of an inline onclick.
+    const span = document.createElement('span');
+    span.textContent = msg;
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:16px;color:inherit;flex-shrink:0;';
+    closeBtn.addEventListener('click', () => banner.remove());
+    banner.append(span, closeBtn);
     const section = document.querySelector('.tracker_section');
     if (section) section.prepend(banner);
 }
@@ -204,16 +209,16 @@ function renderTable() {
         const cls = STATUS_CLASS[app.status] || 'Pending';
         return `
         <tr>
-            <td>${app.position}</td>
-            <td>${app.company}</td>
-            <td>${app.location || '—'}</td>
-            <td>${app.pay || '—'}</td>
+            <td>${esc(app.position)}</td>
+            <td>${esc(app.company)}</td>
+            <td>${esc(app.location) || '—'}</td>
+            <td>${esc(app.pay) || '—'}</td>
             <td>${formatDate(app.date_applied)}</td>
-            <td><span class="status_badge ${cls}">${app.status}</span></td>
-            <td>${app.notes || '—'}</td>
+            <td><span class="status_badge ${cls}">${esc(app.status)}</span></td>
+            <td>${esc(app.notes) || '—'}</td>
             <td class="row_actions">
-                <button class="row_edit" onclick="openModal(${i})" title="Edit">&#9998;</button>
-                <button class="row_delete" onclick="deleteApp(${i})" title="Remove">&#10005;</button>
+                <button class="row_edit" data-index="${i}" title="Edit">&#9998;</button>
+                <button class="row_delete" data-index="${i}" title="Remove">&#10005;</button>
             </td>
         </tr>`;
     }).join('');
@@ -269,6 +274,15 @@ function closeModal() {
     document.getElementById('modal_overlay').style.display = 'none';
     editingId = null;
 }
+
+// Edit/Delete are bound via delegation (rows are re-rendered, so we listen on
+// the stable tbody instead of using inline onclick — required for a strict CSP).
+document.getElementById('app_tbody').addEventListener('click', e => {
+    const editBtn = e.target.closest('.row_edit');
+    const delBtn  = e.target.closest('.row_delete');
+    if (editBtn) openModal(Number(editBtn.dataset.index));
+    else if (delBtn) deleteApp(Number(delBtn.dataset.index));
+});
 
 document.getElementById('add_btn').addEventListener('click', () => openModal());
 document.getElementById('modal_close').addEventListener('click', closeModal);

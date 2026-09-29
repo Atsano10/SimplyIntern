@@ -83,8 +83,8 @@ function renderTable(ranked) {
                 <span class="rank_num ${i < 3 ? 'top3' : ''}">${i + 1}</span>
             </td>
             <td class="username_cell">
-                <span class="lb_avatar">${user.username[0].toUpperCase()}</span>
-                ${user.username}
+                <span class="lb_avatar">${esc(user.username[0].toUpperCase())}</span>
+                ${esc(user.username)}
             </td>
             <td class="col_stat"><span class="stat_rejected">${user.rejected}</span></td>
             <td class="col_stat"><span class="stat_pending">${user.pending}</span></td>

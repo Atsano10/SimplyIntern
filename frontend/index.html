@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="css/styles.css" />
     <link rel="stylesheet" href="css/auth.css" />
     <script src="js/config.js"></script>
+    <script src="js/util.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
   <body>
@@ -31,9 +32,9 @@
             <label for="password">Password</label>
             <input type="password" id="password" name="password" placeholder="Your password" required/>
           </div>
-          <button type="button" class="primary-btn" onclick="logIn()">Log In</button>
+          <button type="button" class="primary-btn" id="login_btn">Log In</button>
           <div class="breaker"><span>or</span></div>
-          <button type="button" class="google-btn" onclick="googleSignIn()">
+          <button type="button" class="google-btn" id="google_btn">
             <img src="images/google.webp" alt="" class="google-logo">
             Continue with Google
           </button>

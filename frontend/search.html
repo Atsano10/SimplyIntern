@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="css/styles.css" />
     <link rel="stylesheet" href="css/search.css" />
     <script src="js/config.js"></script>
+    <script src="js/util.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
   <body>
@@ -25,7 +26,7 @@
         <div class="search_filters">
           <div class="filter_multi">
             <button type="button" class="filter_multi_btn" id="ms_location_btn"
-                    data-all="All Locations" onclick="msToggle('ms_location')">
+                    data-all="All Locations">
               <span class="ms_label">All Locations</span>
               <span class="ms_caret">▾</span>
             </button>
@@ -33,7 +34,7 @@
           </div>
           <div class="filter_multi">
             <button type="button" class="filter_multi_btn" id="ms_industry_btn"
-                    data-all="All Industries" onclick="msToggle('ms_industry')">
+                    data-all="All Industries">
               <span class="ms_label">All Industries</span>
               <span class="ms_caret">▾</span>
             </button>
@@ -41,14 +42,14 @@
           </div>
           <div class="filter_multi">
             <button type="button" class="filter_multi_btn" id="ms_type_btn"
-                    data-all="All Types" onclick="msToggle('ms_type')">
+                    data-all="All Types">
               <span class="ms_label">All Types</span>
               <span class="ms_caret">▾</span>
             </button>
             <div class="filter_multi_panel" id="ms_type_panel"></div>
           </div>
           <button class="search_btn" id="search_btn">Search</button>
-          <button class="clear_btn" id="clear_btn" onclick="clearFilters()">Clear</button>
+          <button class="clear_btn" id="clear_btn">Clear</button>
         </div>
       </div>
 

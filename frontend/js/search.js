@@ -234,6 +234,12 @@ document.getElementById('search_input').addEventListener('keydown', e => {
   if (e.key === 'Enter') performSearch();
 });
 
+// Filter buttons (moved off inline onclick handlers for a strict CSP).
+document.getElementById('ms_location_btn').addEventListener('click', () => msToggle('ms_location'));
+document.getElementById('ms_industry_btn').addEventListener('click', () => msToggle('ms_industry'));
+document.getElementById('ms_type_btn').addEventListener('click', () => msToggle('ms_type'));
+document.getElementById('clear_btn').addEventListener('click', clearFilters);
+
 // Resets the keyword input, unchecks all filter options, and snaps the button labels back to default
 function clearFilters() {
   document.getElementById('search_input').value = '';
@@ -395,16 +401,7 @@ function timeAgo(dateStr) {
   if (days < 60)  return 'Posted 1 month ago';
   return `Posted ${Math.floor(days / 30)} months ago`;
 }
-
-// Escapes strings before inserting them into innerHTML to prevent XSS
-function esc(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+// esc() now lives in js/util.js (shared across pages)
 
 // Saves an application to localStorage and Supabase, then marks the button green.
 // Clicking the green button again calls unmarkApplied to undo it.

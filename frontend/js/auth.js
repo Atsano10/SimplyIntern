@@ -178,3 +178,14 @@ async function logOut() {
     await client.auth.signOut()
     window.location.href = 'index.html'
 }
+
+// Wire up auth buttons (moved off inline onclick handlers for a strict CSP).
+// Each guard runs only on the page where that button exists.
+const loginBtn = document.getElementById('login_btn')
+if (loginBtn) loginBtn.addEventListener('click', logIn)
+
+const signupBtn = document.getElementById('signup_btn')
+if (signupBtn) signupBtn.addEventListener('click', signUp)
+
+const googleBtn = document.getElementById('google_btn')
+if (googleBtn) googleBtn.addEventListener('click', googleSignIn)
