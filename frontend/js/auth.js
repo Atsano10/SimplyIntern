@@ -17,31 +17,7 @@ async function signUp() {
         return
     }
 
-    // check if email already exists in profiles
-    const { data: existingEmail } = await client
-        .from('profiles')
-        .select('email')
-        .eq('email', email)
-        .maybeSingle()
-
-    if (existingEmail) {
-        alert('An account with this email already exists!')
-        return
-    }
-
-    // check if username already taken
-    const { data: existingUsername } = await client
-        .from('profiles')
-        .select('username')
-        .eq('username', username)
-        .maybeSingle()
-
-    if (existingUsername) {
-        alert('Username already taken!')
-        return
-    }
-
-    // create auth account
+    // create auth account (Supabase enforces unique email in auth.users)
     const { data, error } = await client.auth.signUp({
         email: email,
         password: password
@@ -52,7 +28,8 @@ async function signUp() {
         return
     }
 
-    // save profile
+    // save profile. The DB unique constraints on username/email are the source
+    // of truth — we no longer pre-check profiles (which required public reads).
     const { error: insertError } = await client.from('profiles').insert({
         id: data.user.id,
         username: username,
@@ -60,47 +37,39 @@ async function signUp() {
     })
 
     if (insertError) {
-    await client.auth.signOut()
-    
-    if (insertError.message.includes('username')) {
-        alert('Username already taken!')
-    } else {
-        alert('Profile save failed: ' + insertError.message)
+        await client.auth.signOut()
+
+        if (insertError.message.includes('username')) {
+            alert('Username already taken!')
+        } else if (insertError.message.includes('email')) {
+            alert('An account with this email already exists!')
+        } else {
+            alert('Profile save failed: ' + insertError.message)
+        }
+        return
     }
-    return
-}
 
     alert('Account created successfully!')
     window.location.href = 'index.html'
 }
 
 async function logIn(){
-    const username = document.getElementById('username').value
+    // Log in with email (username is a public display name, not a login key).
+    const email = document.getElementById('email').value
     const password = document.getElementById('password').value
 
-    if (!username || !password){
-        alert('Please enter your username and password!')
-        return
-    }
-
-    const { data:profileData, error: profileError } = await client
-        .from('profiles')
-        .select('email')
-        .eq('username', username)
-        .single()
-
-    if (profileError) {
-        alert('Username not found!')
+    if (!email || !password){
+        alert('Please enter your email and password!')
         return
     }
 
     const { data, error } = await client.auth.signInWithPassword({
-        email: profileData.email,
+        email: email,
         password: password
     })
 
     if (error) {
-        alert('Incorrect password!')
+        alert('Incorrect email or password!')
         return
     }
 
@@ -139,12 +108,8 @@ async function checkSession() {
             let suffix = 1
 
             while (true) {
-                const { data: taken } = await client
-                    .from('profiles')
-                    .select('username')
-                    .eq('username', username)
-                    .maybeSingle()
-
+                // Safe availability check (profiles is no longer publicly readable)
+                const { data: taken } = await client.rpc('username_exists', { p_username: username })
                 if (!taken) break
                 username = emailPrefix + suffix
                 suffix++

@@ -11,29 +11,19 @@ window.addEventListener('pageshow', (e) => {
 });
 
 async function loadLeaderboard() {
-    // 1. Fetch every registered user
-    const { data: profiles, error: profileError } = await client
-        .from('profiles')
-        .select('id, username, leaderboard_opt_out');
+    // Read pre-aggregated scores from the leaderboard_scores view. It exposes
+    // ONLY username + counts (never emails or notes), and the raw profiles/
+    // applications tables are now locked to per-user access.
+    const { data: ranked, error } = await client
+        .from('leaderboard_scores')
+        .select('username, rejected, pending, score')
+        .order('score', { ascending: false })
+        .order('username', { ascending: true });
 
-    if (profileError || !profiles) {
+    if (error || !ranked) {
         showTableError();
         return;
     }
-
-    // 2. Fetch all applications that count toward grind score
-    const { data: apps } = await client
-        .from('applications')
-        .select('user_id, status')
-        .in('status', ['Rejected', 'Pending', 'Applied', 'Interview']);
-
-    // 3. Build ranked list — exclude opted-out users
-    const ranked = profiles.filter(p => !p.leaderboard_opt_out).map(profile => {
-        const userApps = apps ? apps.filter(a => a.user_id === profile.id) : [];
-        const rejected = userApps.filter(a => a.status === 'Rejected').length;
-        const pending  = userApps.filter(a => ['Pending', 'Applied', 'Interview'].includes(a.status)).length;
-        return { username: profile.username, rejected, pending, score: rejected + pending };
-    }).sort((a, b) => b.score - a.score || a.username.localeCompare(b.username));
 
     renderPodium(ranked);
     renderTable(ranked);

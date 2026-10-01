@@ -45,14 +45,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const newUsername = document.getElementById('s_username').value.trim();
         if (!newUsername) return showStatus('username_status', 'Username cannot be empty.', false);
 
-        const { data: existing } = await client
-            .from('profiles')
-            .select('id')
-            .eq('username', newUsername)
-            .neq('id', user.id)
-            .maybeSingle();
+        // Safe availability check (profiles is no longer publicly readable).
+        // The RPC excludes the caller's own row, so re-saving your own name is ok.
+        const { data: taken } = await client.rpc('username_exists', { p_username: newUsername });
 
-        if (existing) return showStatus('username_status', 'Username already taken.', false);
+        if (taken) return showStatus('username_status', 'Username already taken.', false);
 
         const { error } = await client
             .from('profiles')
@@ -60,7 +57,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             .eq('id', user.id);
 
         if (error) return showStatus('username_status', 'Failed to update username.', false);
-        showStatus('username_status', `Username updated! Use @${newUsername} to log in.`, true);
+        showStatus('username_status', `Username updated to @${newUsername}!`, true);
 
         // Keep nav drawer in sync without a page reload
         const drawerEl = document.getElementById('drawer_username');
