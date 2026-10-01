@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             .eq('id', user.id);
         if (error) {
             lbToggle.checked = !lbToggle.checked;
-            alert('Failed to save leaderboard setting: ' + error.message);
+            await showAlert('Failed to save leaderboard setting: ' + error.message, 'Settings');
         }
     });
 
@@ -83,7 +83,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Delete Account ──
     document.getElementById('delete_account_btn').addEventListener('click', async () => {
-        const confirmed = confirm('Are you sure you want to delete your account? This cannot be undone.');
+        const confirmed = await showConfirm('Are you sure you want to delete your account? This cannot be undone.', 'Delete account');
         if (!confirmed) return;
 
         const btn = document.getElementById('delete_account_btn');
@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (err) {
             btn.disabled = false;
             btn.textContent = 'Delete Account';
-            alert('Could not delete account: ' + (err.message || 'Unknown error'));
+            await showAlert('Could not delete account: ' + (err.message || 'Unknown error'), 'Delete account');
         }
     });
 });

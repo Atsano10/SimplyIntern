@@ -301,7 +301,7 @@ document.getElementById('modal_save').addEventListener('click', async () => {
     const company = document.getElementById('m_company').value.trim();
 
     if (!position || !company) {
-        alert('Position and Company are required.');
+        await showAlert('Position and Company are required.', 'Add application');
         return;
     }
 
