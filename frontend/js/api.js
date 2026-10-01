@@ -16,83 +16,40 @@ const TYPE_PATTERNS = {
   'externship': ['externship', 'extern '],
 };
 
-// The dataset is small (a few hundred listings), so instead of building fragile PostgREST
-// `.or()` queries with escaped commas, I pull every listing once, cache it, and do all the
-// filtering in plain JavaScript. This is far easier to reason about and debug, and it
-// removes a whole class of query-encoding bugs that were silently returning zero results.
-let _allListings = null;
+// Filtering runs server-side via the `search_listings` RPC (supabase migration 006),
+// so we fetch ONE page of already-filtered rows instead of pulling the whole table
+// into the browser. The keyword maps above stay here as the single source of truth:
+// we expand the user's selected industries/types into `%keyword%` ILIKE patterns and
+// hand them to the RPC, which does the matching in SQL with trigram indexes.
+//
+// Matching semantics are identical to the previous client-side version:
+//   keyword  -> title OR company substring   location -> ILIKE ANY(patterns)
+//   industry -> title ILIKE ANY(patterns)    type     -> title ILIKE ANY(patterns)
+// (Full-text / relevance ranking on the keyword box is a deliberate future upgrade;
+//  this pass keeps exact parity so the scaling change doesn't shift results.)
 
-// Fetches every listing, paging in 1000-row chunks (Supabase caps a single request at 1000).
-// Results are cached for the page session and sorted newest-first once, up front.
-async function loadAllListings() {
-  if (_allListings) return _allListings;
-
-  const CHUNK = 1000;
-  const rows = [];
-  for (let from = 0; ; from += CHUNK) {
-    const { data, error } = await client
-      .from('listings')
-      .select('*')
-      .order('posted_at', { ascending: false, nullsFirst: false })
-      .range(from, from + CHUNK - 1);
-    if (error) throw error;
-    rows.push(...(data || []));
-    if (!data || data.length < CHUNK) break;
-  }
-  _allListings = rows;
-  return _allListings;
-}
-
-// Converts a SQL ILIKE pattern (where % is a wildcard) into an anchored, case-insensitive
-// JS RegExp with the same semantics, so "%, NY" matches "New York, NY" but not ", Denmark".
-function ilikeToRegExp(pattern) {
-  const escaped = pattern
-    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // escape regex metachars (incl. literal % handled next)
-    .replace(/%/g, '.*');                   // % -> wildcard
-  return new RegExp('^' + escaped + '$', 'i');
-}
-
-function matchesKeyword(job, keyword) {
-  if (!keyword) return true;
-  const k = keyword.toLowerCase();
-  return (job.title || '').toLowerCase().includes(k)
-      || (job.company || '').toLowerCase().includes(k);
-}
-
-function matchesLocation(job, patterns) {
-  if (!patterns || patterns.length === 0) return true;
-  const loc = job.location || '';
-  return patterns.some(p => ilikeToRegExp(p).test(loc));
-}
-
-function matchesIndustry(job, industries) {
-  if (!industries || industries.length === 0) return true;
-  const title = (job.title || '').toLowerCase();
-  const kws = industries.flatMap(ind => INDUSTRY_KEYWORDS[ind] || []);
-  return kws.some(k => title.includes(k.toLowerCase()));
-}
-
-function matchesType(job, jobTypes) {
-  if (!jobTypes || jobTypes.length === 0) return true;
-  const title = (job.title || '').toLowerCase();
-  const patterns = jobTypes.flatMap(t => TYPE_PATTERNS[t] || [t]);
-  return patterns.some(p => title.includes(p.toLowerCase()));
-}
-
-// Applies every active filter (filters are AND-ed; options within one filter are OR-ed).
-function applyFilters(listings, filters = {}) {
-  return listings.filter(job =>
-    matchesKeyword(job, filters.keyword) &&
-    matchesLocation(job, filters.locationPatterns) &&
-    matchesIndustry(job, filters.industries) &&
-    matchesType(job, filters.jobTypes)
-  );
-}
-
-// Returns one page of filtered results. Keeps the same (filters, offset, limit) signature the
-// search UI already uses for infinite scroll, but everything runs client-side now.
+// Returns one page of filtered results. Same (filters, offset, limit) signature the
+// search UI already uses for infinite scroll.
 async function fetchJobs(filters = {}, offset = 0, limit = 50) {
-  const all = await loadAllListings();
-  const filtered = applyFilters(all, filters);
-  return filtered.slice(offset, offset + limit);
+  // Expand selected industry/type labels into the title ILIKE patterns the RPC expects.
+  const industryPatterns = (filters.industries || [])
+    .flatMap(ind => INDUSTRY_KEYWORDS[ind] || [])
+    .map(kw => `%${kw}%`);
+  const typePatterns = (filters.jobTypes || [])
+    .flatMap(t => TYPE_PATTERNS[t] || [t])
+    .map(p => `%${p}%`);
+
+  const locationPatterns = filters.locationPatterns || [];
+
+  const { data, error } = await client.rpc('search_listings', {
+    p_keyword:           filters.keyword || null,
+    p_location_patterns: locationPatterns.length ? locationPatterns : null,
+    p_industry_patterns: industryPatterns.length ? industryPatterns : null,
+    p_type_patterns:     typePatterns.length ? typePatterns : null,
+    p_limit:             limit,
+    p_offset:            offset,
+  });
+
+  if (error) throw error;
+  return data || [];
 }

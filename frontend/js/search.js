@@ -360,6 +360,7 @@ function renderResults(jobs, append) {
       </div>
       <div class="center_jobs">
         <button class="apply_btn"
+          data-listing-id="${esc(job.id || '')}"
           data-title="${esc(job.title)}"
           data-company="${esc(job.company)}"
           data-location="${esc(job.location || '')}">Mark Applied</button>
@@ -372,8 +373,12 @@ function renderResults(jobs, append) {
 
     const btn = div.querySelector('.apply_btn');
 
-    // Restore the applied state if this listing was previously marked
-    const prior = appliedApps.find(a => a.position === job.title && a.company === job.company);
+    // Restore the applied state if this listing was previously marked. Prefer the
+    // stable listing_id; fall back to the old position+company match for legacy
+    // entries saved before listing_id existed.
+    const prior = appliedApps.find(a =>
+      (a.listingId && job.id && a.listingId === job.id) ||
+      (!a.listingId && a.position === job.title && a.company === job.company));
     if (prior) {
       btn.textContent = 'Applied ✓';
       btn.classList.add('applied');
@@ -412,25 +417,27 @@ async function markApplied(btn) {
   }
 
   const entry = {
-    position: btn.dataset.title,
-    company:  btn.dataset.company,
-    location: btn.dataset.location,
-    pay:      btn.dataset.pay || 'Not listed',
-    status:   'Pending',
-    notes:    '',
+    listingId: btn.dataset.listingId || null,
+    position:  btn.dataset.title,
+    company:   btn.dataset.company,
+    location:  btn.dataset.location,
+    pay:       btn.dataset.pay || 'Not listed',
+    status:    'Pending',
+    notes:     '',
   };
 
   try {
     const { data: { user } } = await client.auth.getUser();
     if (user) {
       const { data, error } = await client.from('applications').insert({
-        user_id:  user.id,
-        position: entry.position,
-        company:  entry.company,
-        location: entry.location,
-        pay:      entry.pay,
-        status:   entry.status,
-        notes:    entry.notes,
+        user_id:    user.id,
+        listing_id: entry.listingId,
+        position:   entry.position,
+        company:    entry.company,
+        location:   entry.location,
+        pay:        entry.pay,
+        status:     entry.status,
+        notes:      entry.notes,
       }).select().single();
 
       if (!error && data) {
@@ -460,9 +467,15 @@ async function unmarkApplied(btn) {
   } catch (_) {}
 
   const apps = JSON.parse(localStorage.getItem('si_applications') || '[]');
-  const filtered = appId
-    ? apps.filter(a => String(a.id) !== String(appId))
-    : apps.filter(a => a.position !== btn.dataset.title || a.company !== btn.dataset.company);
+  const listingId = btn.dataset.listingId;
+  let filtered;
+  if (appId) {
+    filtered = apps.filter(a => String(a.id) !== String(appId));
+  } else if (listingId) {
+    filtered = apps.filter(a => a.listingId !== listingId);
+  } else {
+    filtered = apps.filter(a => a.position !== btn.dataset.title || a.company !== btn.dataset.company);
+  }
   localStorage.setItem('si_applications', JSON.stringify(filtered));
 
   btn.textContent = 'Mark Applied';
