@@ -39,10 +39,16 @@ async function signUp() {
     if (insertError) {
         await client.auth.signOut()
 
-        if (insertError.message.includes('username')) {
-            alert('Username already taken!')
-        } else if (insertError.message.includes('email')) {
-            alert('An account with this email already exists!')
+        // 23505 = Postgres unique_violation. Decide which field clashed by the
+        // constraint NAME (reliable), not by loose words in the message text.
+        if (insertError.code === '23505') {
+            if (insertError.message.includes('profiles_username_key')) {
+                alert('Username already taken!')
+            } else if (insertError.message.includes('profiles_email_key')) {
+                alert('An account with this email already exists!')
+            } else {
+                alert('That username or email is already taken.')
+            }
         } else {
             alert('Profile save failed: ' + insertError.message)
         }
@@ -157,3 +163,27 @@ if (signupBtn) signupBtn.addEventListener('click', signUp)
 
 const googleBtn = document.getElementById('google_btn')
 if (googleBtn) googleBtn.addEventListener('click', googleSignIn)
+
+// Sends a password-reset email. Uses the email typed into the login form.
+async function forgotPassword() {
+    const email = document.getElementById('email').value
+    if (!email) {
+        alert('Enter your email above first, then click "Forgot password?"')
+        return
+    }
+
+    const { error } = await client.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/reset-password.html'
+    })
+
+    if (error) {
+        alert(error.message)
+        return
+    }
+
+    // Deliberately neutral message — don't reveal whether the email is registered.
+    alert('If an account exists for that email, a password-reset link is on its way. Check your inbox.')
+}
+
+const forgotLink = document.getElementById('forgot_link')
+if (forgotLink) forgotLink.addEventListener('click', (e) => { e.preventDefault(); forgotPassword() })
