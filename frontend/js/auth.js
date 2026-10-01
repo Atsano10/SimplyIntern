@@ -141,14 +141,16 @@ if (!window.location.pathname.includes('search') &&
     !window.location.pathname.includes('tracker') &&
     !window.location.pathname.includes('signup') &&
     !window.location.pathname.includes('settings') &&
+    !window.location.pathname.includes('saved') &&
     !window.location.pathname.includes('leaderboard')) {
     checkSession()
 }
 
 async function logOut() {
-    // Clear cached applications so they don't leak into the next account
-    // that logs in on this browser.
+    // Clear cached applications and saved jobs so they don't leak into the next
+    // account that logs in on this browser.
     localStorage.removeItem('si_applications')
+    localStorage.removeItem('si_saved')
     await client.auth.signOut()
     window.location.href = 'index.html'
 }

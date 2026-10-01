@@ -347,9 +347,12 @@ function renderResults(jobs, append) {
 
   // Read once outside the loop so I'm not hitting localStorage on every card
   const appliedApps = JSON.parse(localStorage.getItem('si_applications') || '[]');
+  const savedIds    = getSavedIds();
 
   const fragment = document.createDocumentFragment();
   jobs.forEach(job => {
+    if (job.id) jobById[job.id] = job;   // remember for toggleSaved
+
     const div = document.createElement('div');
     div.className = 'jobs';
     div.innerHTML = `
@@ -364,12 +367,17 @@ function renderResults(jobs, append) {
           data-title="${esc(job.title)}"
           data-company="${esc(job.company)}"
           data-location="${esc(job.location || '')}">Mark Applied</button>
+        <button class="save_btn" data-listing-id="${esc(job.id || '')}">☆ Save</button>
       </div>
       <div class="right_jobs">
         <div class="info_rate">${esc(timeAgo(job.posted_at))}</div>
         <a class="info_link" href="${esc(job.url)}" target="_blank" rel="noopener noreferrer">View Listing</a>
       </div>
     `;
+
+    const saveBtn = div.querySelector('.save_btn');
+    if (job.id && savedIds.has(job.id)) setSavedBtnState(saveBtn, true);
+    saveBtn.addEventListener('click', function () { toggleSaved(this); });
 
     const btn = div.querySelector('.apply_btn');
 
@@ -407,6 +415,86 @@ function timeAgo(dateStr) {
   return `Posted ${Math.floor(days / 30)} months ago`;
 }
 // esc() now lives in js/util.js (shared across pages)
+
+// ── Saved jobs ───────────────────────────────────────────────────────────────
+// A bookmarked shortlist, separate from "applied". Mirrors the applied-state
+// pattern: localStorage `si_saved` is the synchronous source the cards read on
+// render, and Supabase is kept in sync in the background when signed in.
+
+// listing_id -> full job row for the current results, so toggleSaved can build a
+// saved entry without re-fetching.
+const jobById = {};
+
+// Normalizes a listing row into the compact shape we persist for the saved list.
+function toSavedEntry(job) {
+  return {
+    listingId: job.id,
+    title:     job.title,
+    company:   job.company,
+    location:  job.location || '',
+    url:       job.url || '',
+    pay:       job.pay || '',
+    posted_at: job.posted_at || null,
+  };
+}
+
+// The set of listing ids currently saved, read from the local cache.
+function getSavedIds() {
+  const saved = JSON.parse(localStorage.getItem('si_saved') || '[]');
+  return new Set(saved.map(s => s.listingId).filter(Boolean));
+}
+
+function setSavedBtnState(btn, isSaved) {
+  btn.classList.toggle('saved', isSaved);
+  btn.textContent = isSaved ? '★ Saved' : '☆ Save';
+}
+
+// Pull the user's saved rows from Supabase into the local cache so saved state is
+// correct across devices/sessions. No-op (keeps localStorage) when logged out.
+async function syncSavedFromCloud() {
+  try {
+    const { data: { user } } = await client.auth.getUser();
+    if (!user) return;
+    const { data, error } = await client
+      .from('saved_jobs')
+      .select('created_at, listings(*)')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    if (error || !data) return;
+    const entries = data.filter(r => r.listings).map(r => toSavedEntry(r.listings));
+    localStorage.setItem('si_saved', JSON.stringify(entries));
+  } catch (_) {}
+}
+
+// Bookmarks or un-bookmarks a listing. Updates localStorage immediately and
+// syncs to Supabase when signed in. Safe to call for logged-out users (local only).
+async function toggleSaved(btn) {
+  const listingId = btn.dataset.listingId;
+  if (!listingId) return;
+
+  const saved = JSON.parse(localStorage.getItem('si_saved') || '[]');
+  const already = saved.some(s => s.listingId === listingId);
+
+  if (already) {
+    localStorage.setItem('si_saved', JSON.stringify(saved.filter(s => s.listingId !== listingId)));
+    setSavedBtnState(btn, false);
+    try {
+      const { data: { user } } = await client.auth.getUser();
+      if (user) await client.from('saved_jobs').delete()
+        .eq('user_id', user.id).eq('listing_id', listingId);
+    } catch (_) {}
+  } else {
+    const job = jobById[listingId];
+    if (job) saved.push(toSavedEntry(job));
+    localStorage.setItem('si_saved', JSON.stringify(saved));
+    setSavedBtnState(btn, true);
+    try {
+      const { data: { user } } = await client.auth.getUser();
+      if (user) await client.from('saved_jobs')
+        .upsert({ user_id: user.id, listing_id: listingId }, { onConflict: 'user_id,listing_id' });
+    } catch (_) {}
+  }
+}
 
 // Saves an application to localStorage and Supabase, then marks the button green.
 // Clicking the green button again calls unmarkApplied to undo it.
@@ -501,3 +589,6 @@ msInit('ms_type', 'jobTypes', [
 ]);
 
 loadLocationFilter();
+
+// Refresh the saved-jobs cache from Supabase so bookmarks render correctly.
+syncSavedFromCloud();

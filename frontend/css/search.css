@@ -316,8 +316,10 @@ body {
 
 .center_jobs {
     display: flex;
+    flex-direction: column;
     justify-content: center;
-    align-items: center;
+    align-items: stretch;
+    gap: 8px;
     flex-shrink: 0;
 }
 
@@ -349,6 +351,37 @@ body {
 .apply_btn.applied:hover {
     background-color: #1f5c3a;
     border-color: #1f5c3a;
+}
+
+/* Bookmark (save) button — secondary style next to Mark Applied */
+.save_btn {
+    padding: 6px 18px;
+    border-radius: 8px;
+    border: 1.5px solid #c9a24b;
+    background-color: #FFFFFA;
+    color: #9a7a1e;
+    font-family: 'Saira', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.save_btn:hover {
+    background-color: #c9a24b;
+    color: #FFFFFA;
+}
+
+.save_btn.saved {
+    background-color: #e6b800;
+    border-color: #e6b800;
+    color: #3a2e00;
+}
+
+.save_btn.saved:hover {
+    background-color: #cca300;
+    border-color: #cca300;
 }
 
 .right_jobs {
@@ -467,6 +500,25 @@ body.dark .apply_btn.applied {
 body.dark .apply_btn.applied:hover {
     background: #1f5c3a;
     border-color: #1f5c3a;
+}
+body.dark .save_btn {
+    background: #2c2022;
+    color: #e0c072;
+    border-color: #6b5520;
+}
+body.dark .save_btn:hover {
+    background: #c9a24b;
+    color: #2c2022;
+    border-color: #c9a24b;
+}
+body.dark .save_btn.saved {
+    background: #e6b800;
+    border-color: #e6b800;
+    color: #3a2e00;
+}
+body.dark .save_btn.saved:hover {
+    background: #cca300;
+    border-color: #cca300;
 }
 body.dark .no_results { color: #eeb9c2; }
 

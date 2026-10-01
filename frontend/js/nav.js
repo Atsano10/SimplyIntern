@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="drawer_body">
                 <a href="search.html" class="drawer_link">Search</a>
+                <a href="saved.html" class="drawer_link">Saved</a>
                 <a href="leaderboard.html" class="drawer_link">Leaderboard</a>
                 <a href="tracker.html" class="drawer_link">Tracker</a>
                 <div class="drawer_divider"></div>

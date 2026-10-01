@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script defer src="/_vercel/insights/script.js"></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Saved — SimplyIntern</title>
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="stylesheet" href="css/search.css" />
+    <script src="js/config.js"></script>
+    <script src="js/util.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+  <body>
+    <div class="menu_bar">
+      <div class="logo">SimplyIntern</div>
+      <div class="nav_section"><a href="search.html">Search</a></div>
+      <div class="nav_section"><a href="saved.html">Saved</a></div>
+      <div class="nav_section"><a href="leaderboard.html">Leaderboard</a></div>
+      <div class="nav_section"><a href="tracker.html">Tracker</a></div>
+      <button class="additional">&#9776;</button>
+    </div>
+
+    <div class="page_content">
+      <div class="results_area">
+        <div class="empty_state" id="saved_empty" style="display:none;">
+          <p class="empty_title">No saved jobs yet</p>
+          <p class="empty_sub">Tap “☆ Save” on any listing in Search to build your shortlist.</p>
+        </div>
+        <div class="job_list" id="saved_list"></div>
+      </div>
+    </div>
+
+    <script src="js/auth.js?v=2"></script>
+    <script src="js/nav.js?v=2"></script>
+    <script src="js/saved.js?v=1"></script>
+  </body>
+</html>
