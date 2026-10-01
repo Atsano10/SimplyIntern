@@ -31,11 +31,16 @@ async function loadApplications() {
                     return;
                 }
 
-                // Cloud returned empty — don't wipe localStorage.
-                // If local apps exist (unsaved from a previous session), keep them and try to push them up.
+                // Cloud returned empty for THIS user. Keep only apps that were
+                // never synced (no id) — those are genuinely unsaved local work.
+                // Apps WITH an id belong to a different account's cloud data
+                // (e.g. a previous login in this browser), so we drop them
+                // instead of showing them under the current account.
                 const local = JSON.parse(localStorage.getItem('si_applications') || '[]');
-                if (local.length > 0) {
-                    applications = local;
+                const unsynced = local.filter(a => !a.id);
+                if (unsynced.length > 0) {
+                    applications = unsynced;
+                    localStorage.setItem('si_applications', JSON.stringify(applications));
                     renderTable();
                     syncLocalApps(user); // non-blocking background sync
                     return;

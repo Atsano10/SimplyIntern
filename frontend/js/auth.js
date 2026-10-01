@@ -140,6 +140,9 @@ if (!window.location.pathname.includes('search') &&
 }
 
 async function logOut() {
+    // Clear cached applications so they don't leak into the next account
+    // that logs in on this browser.
+    localStorage.removeItem('si_applications')
     await client.auth.signOut()
     window.location.href = 'index.html'
 }
