@@ -13,7 +13,7 @@ async function signUp() {
 
     // confirm passwords match
     if (confirmPassword != password) {
-        alert('Passwords do not match!')
+        await showAlert('Passwords do not match!', 'Sign up')
         return
     }
 
@@ -24,7 +24,7 @@ async function signUp() {
     })
 
     if (error) {
-        alert(error.message)
+        await showAlert(error.message, 'Sign up failed')
         return
     }
 
@@ -43,19 +43,19 @@ async function signUp() {
         // constraint NAME (reliable), not by loose words in the message text.
         if (insertError.code === '23505') {
             if (insertError.message.includes('profiles_username_key')) {
-                alert('Username already taken!')
+                await showAlert('Username already taken!', 'Sign up')
             } else if (insertError.message.includes('profiles_email_key')) {
-                alert('An account with this email already exists!')
+                await showAlert('An account with this email already exists!', 'Sign up')
             } else {
-                alert('That username or email is already taken.')
+                await showAlert('That username or email is already taken.', 'Sign up')
             }
         } else {
-            alert('Profile save failed: ' + insertError.message)
+            await showAlert('Profile save failed: ' + insertError.message, 'Sign up failed')
         }
         return
     }
 
-    alert('Account created successfully!')
+    await showAlert('Account created successfully!', 'Welcome to SimplyIntern')
     window.location.href = 'index.html'
 }
 
@@ -65,7 +65,7 @@ async function logIn(){
     const password = document.getElementById('password').value
 
     if (!email || !password){
-        alert('Please enter your email and password!')
+        await showAlert('Please enter your email and password!', 'Log in')
         return
     }
 
@@ -75,7 +75,7 @@ async function logIn(){
     })
 
     if (error) {
-        alert('Incorrect email or password!')
+        await showAlert('Incorrect email or password!', 'Log in failed')
         return
     }
 
@@ -91,7 +91,7 @@ async function googleSignIn() {
     })
 
     if (error){
-        alert(error.message)
+        await showAlert(error.message, 'Google sign-in failed')
         return
     }
 }
@@ -168,21 +168,25 @@ if (googleBtn) googleBtn.addEventListener('click', googleSignIn)
 async function forgotPassword() {
     const email = document.getElementById('email').value
     if (!email) {
-        alert('Enter your email above first, then click "Forgot password?"')
+        await showAlert('Enter your email above first, then click "Forgot password?"', 'Reset password')
         return
     }
+
+    // Confirm the destination address before sending anything.
+    const ok = await showConfirm(`Send a password-reset link to ${email}?`, 'Reset password')
+    if (!ok) return
 
     const { error } = await client.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + '/reset-password.html'
     })
 
     if (error) {
-        alert(error.message)
+        await showAlert(error.message, 'Something went wrong')
         return
     }
 
     // Deliberately neutral message — don't reveal whether the email is registered.
-    alert('If an account exists for that email, a password-reset link is on its way. Check your inbox.')
+    await showAlert('If an account exists for that email, a password-reset link is on its way. Check your inbox.', 'Check your inbox')
 }
 
 const forgotLink = document.getElementById('forgot_link')

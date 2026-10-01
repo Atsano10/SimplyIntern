@@ -261,3 +261,80 @@ body.dark .drawer_footer { border-top-color: #4a3035; }
         display: none;
     }
 }
+
+/* ── CUSTOM MODAL (styled replacement for alert/confirm) ── */
+.si_modal_overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 7, 5, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+    animation: si_fade 0.15s ease;
+}
+
+.si_modal {
+    background: #FFFFFA;
+    color: #080705;
+    width: 100%;
+    max-width: 380px;
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: 0 20px 50px rgba(8, 7, 5, 0.3);
+    animation: si_pop 0.15s ease;
+}
+
+.si_modal_title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.si_modal_msg {
+    font-size: 14px;
+    line-height: 1.5;
+    color: #4a3035;
+}
+
+.si_modal_actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 22px;
+}
+
+.si_modal_btn {
+    padding: 9px 18px;
+    border-radius: 8px;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.si_modal_confirm {
+    background: #702632;
+    color: #FFFFFA;
+}
+
+.si_modal_confirm:hover { background: #5a1e28; }
+
+.si_modal_cancel {
+    background: #e0cdd0;
+    color: #080705;
+}
+
+.si_modal_cancel:hover { background: #d4bdc1; }
+
+@keyframes si_fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes si_pop {
+    from { transform: translateY(8px) scale(0.98); opacity: 0; }
+    to   { transform: none; opacity: 1; }
+}
+
+body.dark .si_modal { background: #2c2022; color: #f0e8ea; }
+body.dark .si_modal_msg { color: #cbb9bd; }
+body.dark .si_modal_cancel { background: #4a3035; color: #f0e8ea; }
+body.dark .si_modal_cancel:hover { background: #5a3d43; }
