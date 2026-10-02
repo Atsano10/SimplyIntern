@@ -1,6 +1,17 @@
 let applications = [];
 let editingId = null; // Supabase UUID or localStorage index
 
+// Funnel stage rank per status (see migration 011). Rejected carries no rank — it's
+// an outcome, not a stage — so a rejection never lowers an application's high-water mark.
+const STAGE_RANK = {
+    'Pending': 0, 'Applied': 0,
+    '1st Round Interview': 1, 'Interview': 1,
+    '2nd Round Interview': 2,
+    'Accepted': 3,
+    'Rejected': 0,
+};
+const rankOf = status => STAGE_RANK[status] ?? 0;
+
 // ── LOAD ────────────────────────────────────────────────────────────────────
 
 async function loadApplications() {
@@ -25,6 +36,7 @@ async function loadApplications() {
                         date_applied: row.date_applied || '',
                         status: row.status,
                         notes: row.notes || '',
+                        max_stage: row.max_stage ?? 0,
                     }));
                     localStorage.setItem('si_applications', JSON.stringify(applications));
                     renderTable();
@@ -75,6 +87,7 @@ async function syncLocalApps(user) {
                 date_applied: app.date_applied || null,
                 status: app.status,
                 notes: app.notes,
+                max_stage: app.max_stage ?? rankOf(app.status),
             })
             .select()
             .single();
@@ -133,6 +146,7 @@ async function saveApplication(entry) {
                         date_applied: entry.date_applied || null,
                         status: entry.status,
                         notes: entry.notes,
+                        max_stage: entry.max_stage ?? rankOf(entry.status),
                     })
                     .eq('id', entry.id);
                 if (error) console.error('Update failed:', error.message);
@@ -149,6 +163,7 @@ async function saveApplication(entry) {
                         date_applied: entry.date_applied || null,
                         status: entry.status,
                         notes: entry.notes,
+                        max_stage: entry.max_stage ?? rankOf(entry.status),
                     })
                     .select()
                     .single();
@@ -245,6 +260,71 @@ function updateStats() {
         applications.filter(a => a.status === 'Rejected').length;
     document.getElementById('stat_accepted').textContent =
         applications.filter(a => a.status === 'Accepted').length;
+
+    renderInsights();
+}
+
+// Builds the funnel (Applied → Interviewed → Offers) and the conversion rates from
+// the in-memory applications array. Counts come from each application's max_stage
+// high-water mark (migration 011), so a later rejection no longer erases the fact
+// that an application reached an interview or offer. All values are derived, so the
+// markup is built from numbers/static labels only (no user input to escape).
+function renderInsights() {
+    const total = applications.length;
+
+    const sub = document.getElementById('insights_sub');
+    const funnelEl = document.getElementById('funnel');
+    const ratesEl  = document.getElementById('rates_row');
+
+    if (total === 0) {
+        sub.textContent = '';
+        funnelEl.innerHTML = '<div class="insights_empty">Track a few applications to see your funnel and conversion rates here.</div>';
+        ratesEl.innerHTML = '';
+        return;
+    }
+
+    const stage = a => a.max_stage || 0;
+    const reachedInterview = applications.filter(a => stage(a) >= 1).length;
+    const offers           = applications.filter(a => stage(a) >= 3).length;
+    // Heard back = reached an interview at some point OR got an explicit rejection.
+    const responded        = applications.filter(a => stage(a) >= 1 || a.status === 'Rejected').length;
+
+    sub.textContent = `across ${total} application${total === 1 ? '' : 's'}`;
+
+    const pct = (n, d = total) => d ? Math.round((n / d) * 100) : 0;
+
+    // Funnel stages: bar width is relative to total so the three bars read as a funnel.
+    const stages = [
+        { label: 'Applied',     count: total,            cls: 'applied' },
+        { label: 'Interviewed', count: reachedInterview, cls: 'interviewed' },
+        { label: 'Offers',      count: offers,           cls: 'offers' },
+    ];
+    funnelEl.innerHTML = stages.map(s => `
+        <div class="funnel_stage">
+            <div class="funnel_label">${s.label}</div>
+            <div class="funnel_track">
+                <div class="funnel_bar ${s.cls}" style="width:${Math.max(pct(s.count), s.count > 0 ? 3 : 0)}%"></div>
+            </div>
+            <div class="funnel_meta">
+                <span class="funnel_count">${s.count}</span>
+                <span class="funnel_pct">${pct(s.count)}%</span>
+            </div>
+        </div>
+    `).join('');
+
+    // Conversion rates: response rate, Applied→Interview, and Interview→Offer
+    // (the last is relative to interviews, not total — a true stage conversion).
+    const rates = [
+        { pct: pct(responded),                       label: 'Response rate',     hint: 'heard back (interview or rejection)' },
+        { pct: pct(reachedInterview),                label: 'Applied → Interview', hint: 'share of applications that reached an interview' },
+        { pct: pct(offers, reachedInterview),        label: 'Interview → Offer',  hint: 'share of interviews that became offers' },
+    ];
+    ratesEl.innerHTML = rates.map(r => `
+        <div class="rate_card" title="${r.hint}">
+            <div class="rate_pct">${r.pct}%</div>
+            <div class="rate_label">${r.label}</div>
+        </div>
+    `).join('');
 }
 
 // ── MODAL ───────────────────────────────────────────────────────────────────
@@ -314,6 +394,10 @@ document.getElementById('modal_save').addEventListener('click', async () => {
         status: document.getElementById('m_status').value,
         notes: document.getElementById('m_notes').value.trim(),
     };
+
+    // High-water mark: never below what this application previously reached.
+    const priorMax = editingId !== null ? (applications[editingId].max_stage || 0) : 0;
+    entry.max_stage = Math.max(priorMax, rankOf(entry.status));
 
     if (editingId !== null) {
         entry.id = applications[editingId].id;

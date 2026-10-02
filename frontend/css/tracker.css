@@ -50,6 +50,134 @@ body {
 .stat_rejected .stat_number { color: #702632; }
 .stat_accepted .stat_number { color: #2a7a4f; }
 
+/* ── INSIGHTS PANEL ── */
+.insights_panel {
+    margin: 20px 48px 0;
+    background: #FFFFFA;
+    border: 1.5px solid #d0b0b5;
+    border-radius: 14px;
+    overflow: hidden;
+    transition: background 0.3s, border-color 0.3s;
+}
+
+.insights_header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 16px 24px;
+    border-bottom: 1.5px solid #eeb9c2;
+}
+
+.insights_sub {
+    font-size: 13px;
+    color: #888;
+}
+
+.insights_body {
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+.insights_empty {
+    color: #aaa;
+    font-size: 14px;
+    text-align: center;
+    padding: 6px 0;
+}
+
+/* Funnel */
+.funnel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.funnel_stage {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.funnel_label {
+    width: 92px;
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+}
+
+.funnel_track {
+    flex: 1;
+    background: #f3e6e8;
+    border-radius: 8px;
+    height: 26px;
+    overflow: hidden;
+}
+
+.funnel_bar {
+    height: 100%;
+    border-radius: 8px;
+    transition: width 0.4s ease;
+}
+
+.funnel_bar.applied     { background: #702632; }
+.funnel_bar.interviewed { background: #5a3e8a; }
+.funnel_bar.offers      { background: #2a7a4f; }
+
+.funnel_meta {
+    width: 74px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.funnel_count {
+    font-size: 15px;
+    font-weight: 700;
+    color: #080705;
+}
+
+.funnel_pct {
+    font-size: 12px;
+    color: #888;
+    width: 34px;
+    text-align: right;
+}
+
+/* Rates */
+.rates_row {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.rate_card {
+    flex: 1;
+    min-width: 120px;
+    background: #f7eeef;
+    border-radius: 10px;
+    padding: 14px 16px;
+    text-align: center;
+}
+
+.rate_pct {
+    font-size: 28px;
+    font-weight: 700;
+    color: #702632;
+    line-height: 1;
+}
+
+.rate_label {
+    font-size: 12px;
+    color: #888;
+    margin-top: 5px;
+    font-weight: 500;
+}
+
 /* ── TRACKER SECTION ── */
 .tracker_section {
     margin: 24px 48px 48px;
@@ -342,6 +470,24 @@ body.dark .stat_card {
 body.dark .stat_number { color: #f0e8ea; }
 body.dark .stat_label { color: #9a8284; }
 
+body.dark .insights_panel {
+    background: #2c2022;
+    border-color: #4a3035;
+}
+body.dark .insights_header { border-bottom-color: #4a3035; }
+body.dark .insights_sub { color: #9a8284; }
+body.dark .insights_empty { color: #9a8284; }
+body.dark .funnel_label { color: #cbb4b7; }
+body.dark .funnel_track { background: #241819; }
+body.dark .funnel_bar.applied     { background: #a33a4a; }
+body.dark .funnel_bar.interviewed { background: #8468c0; }
+body.dark .funnel_bar.offers      { background: #3a9e68; }
+body.dark .funnel_count { color: #f0e8ea; }
+body.dark .funnel_pct { color: #9a8284; }
+body.dark .rate_card { background: #241819; }
+body.dark .rate_pct { color: #eeb9c2; }
+body.dark .rate_label { color: #9a8284; }
+
 body.dark .tracker_section {
     background: #2c2022;
     border-color: #4a3035;
@@ -399,6 +545,15 @@ body.dark .modal_cancel:hover { border-color: #eeb9c2; color: #eeb9c2; }
 
     .tracker_section {
         margin: 16px 16px 32px;
+    }
+
+    .insights_panel {
+        margin: 16px 16px 0;
+    }
+
+    .funnel_label {
+        width: 76px;
+        font-size: 12px;
     }
 
     .form_row {
