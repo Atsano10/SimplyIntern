@@ -349,6 +349,7 @@ function parseHtmlTable(content: string): Listing[] {
     if (cols.length < 4) continue;
 
     const [companyCol, roleCol, locationCol, linkCol] = cols;
+    const dateCol = cols[4]; // SimplifyJobs: Company | Role | Location | Link | Date Posted
 
     const rawCompanyText = companyCol.replace(/<[^>]+>/g, '').replace(/[🔥🔒]/g, '').trim();
     let company: string;
@@ -371,7 +372,7 @@ function parseHtmlTable(content: string): Listing[] {
     jobs.push({
       title: role, company, location, pay: null,
       type: getType(role), url, source: 'github',
-      posted_at: null, updated_at: new Date().toISOString(),
+      posted_at: parseGithubAge(dateCol), updated_at: new Date().toISOString(),
     });
   }
   return jobs;
@@ -393,6 +394,7 @@ function parsePipeTable(content: string): Listing[] {
     if (cols.length < 4) continue;
 
     const [companyRaw, roleRaw, locationRaw, linkCol] = cols;
+    const dateCol = cols[4]; // trailing Date-Posted/Age column, when present
 
     const mdLink   = linkCol.match(/\[.*?\]\((https?:\/\/[^)]+)\)/);
     const htmlLink = linkCol.match(/href="(https?:\/\/[^"]+)"/);
@@ -416,10 +418,44 @@ function parsePipeTable(content: string): Listing[] {
     jobs.push({
       title: role, company, location, pay: null,
       type: getType(role), url, source: 'github',
-      posted_at: null, updated_at: new Date().toISOString(),
+      posted_at: parseGithubAge(dateCol), updated_at: new Date().toISOString(),
     });
   }
   return jobs;
+}
+
+// Converts the relative "age" value from a GitHub README's Date-Posted column
+// (e.g. "4d", "2mo", "1y", "12h", or an absolute "Jul 15") into an absolute
+// YYYY-MM-DD date. Because this function reruns daily and the age grows in
+// lockstep with the calendar, today-minus-age yields a STABLE posted date across
+// runs (posted 10d ago stays the same absolute date tomorrow). Returns null when
+// the value is missing or unparseable, so posted_at simply stays null (no regression).
+function parseGithubAge(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const s = raw.replace(/<[^>]+>/g, '').trim();
+  if (!s) return null;
+
+  const toDate = (d: Date) => d.toISOString().split('T')[0];
+
+  // Relative age like "3d", "2w", "5mo", "1y", "12h"
+  const m = s.match(/^(\d+)\s*(h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|mo|mos|month|months|y|yr|yrs|year|years)(?:\s+ago)?$/i);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    const unit = m[2].toLowerCase();
+    const d = new Date();
+    if      (unit.startsWith('h'))  d.setHours(d.getHours() - n);
+    else if (unit.startsWith('d'))  d.setDate(d.getDate() - n);
+    else if (unit.startsWith('w'))  d.setDate(d.getDate() - n * 7);
+    else if (unit.startsWith('mo')) d.setMonth(d.getMonth() - n);
+    else if (unit.startsWith('y'))  d.setFullYear(d.getFullYear() - n);
+    return toDate(d);
+  }
+
+  // Absolute date the repo may use instead (e.g. "Jul 15", "2026-07-15")
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) return toDate(parsed);
+
+  return null;
 }
 
 // Auto-detects which format the README uses and calls the right parser

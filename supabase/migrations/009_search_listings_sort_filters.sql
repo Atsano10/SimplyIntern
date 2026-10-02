@@ -3,15 +3,14 @@
 -- Extends migration 006 with controls the UI now exposes:
 --   * p_posted_within_days -> only listings posted in the last N days
 --   * p_remote_only        -> only listings whose location mentions "remote"
---   * p_has_pay            -> only listings that actually name compensation
 --   * p_sort              -> 'newest' (default) | 'oldest' | 'company'
 -- Keyword/location/industry/type behavior is unchanged from 006.
 --
--- NOTE on salary: `listings.pay` is free-form TEXT ("$30 / hr", "Not listed",
--- stipends, ranges, hourly vs yearly), so a numeric min-salary filter can't be
--- done reliably here -- it would silently drop every row it fails to parse.
--- p_has_pay is the honest version ("has compensation listed"). A true numeric
--- salary filter needs a structured pay column populated at scrape time.
+-- NOTE: no salary/pay filter. The daily-refresh scraper hardcodes pay = NULL for
+-- every source (Greenhouse's API and the GitHub README tables don't expose it),
+-- so `listings.pay` is empty for 100% of rows -- any pay filter would match
+-- nothing. A pay filter only becomes possible once a structured pay column is
+-- populated at scrape time.
 --
 -- CREATE OR REPLACE can't change a function's argument list, so we drop the old
 -- 6-arg signature first, then recreate with the new parameters.
@@ -24,7 +23,6 @@ CREATE OR REPLACE FUNCTION public.search_listings(
   p_type_patterns      text[]  DEFAULT NULL,
   p_posted_within_days int     DEFAULT NULL,
   p_remote_only        boolean DEFAULT false,
-  p_has_pay            boolean DEFAULT false,
   p_sort               text    DEFAULT 'newest',
   p_limit              int     DEFAULT 50,
   p_offset             int     DEFAULT 0
@@ -52,11 +50,6 @@ AS $$
           l.posted_at >= current_date - p_posted_within_days )
     -- remote only
     AND ( NOT p_remote_only OR l.location ILIKE '%remote%' )
-    -- paid only: pay present and not an "absent"/unpaid placeholder.
-    AND ( NOT p_has_pay OR
-          ( l.pay IS NOT NULL
-            AND btrim(l.pay) <> ''
-            AND l.pay !~* '^\s*(not\s*listed|n/?a|none|tbd|unpaid|--)\s*$' ) )
   ORDER BY
     -- Only the clause matching p_sort is non-NULL for every row; the rest fall
     -- through. posted_at DESC is the general tiebreaker, id the deterministic
@@ -69,5 +62,5 @@ AS $$
   OFFSET GREATEST(p_offset, 0);
 $$;
 
-GRANT EXECUTE ON FUNCTION public.search_listings(text, text[], text[], text[], int, boolean, boolean, text, int, int)
+GRANT EXECUTE ON FUNCTION public.search_listings(text, text[], text[], text[], int, boolean, text, int, int)
   TO anon, authenticated;

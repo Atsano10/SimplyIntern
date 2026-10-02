@@ -48,7 +48,6 @@ async function fetchJobs(filters = {}, offset = 0, limit = 50) {
     p_type_patterns:      typePatterns.length ? typePatterns : null,
     p_posted_within_days: filters.postedWithinDays ?? null,
     p_remote_only:        !!filters.remoteOnly,
-    p_has_pay:            !!filters.paidOnly,
     p_sort:               filters.sort || 'newest',
     p_limit:              limit,
     p_offset:             offset,
