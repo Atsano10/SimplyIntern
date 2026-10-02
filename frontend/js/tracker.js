@@ -1,6 +1,21 @@
 let applications = [];
 let editingId = null; // Supabase UUID or localStorage index
 
+// Interview-stage statuses (includes the legacy 'Interview').
+const INTERVIEW_STATUSES = ['1st Round Interview', '2nd Round Interview', 'Interview'];
+
+// Maintains the reached_interview milestone for an application based on its status:
+// reaching any interview round turns it on; returning to Pending clears it (a restart);
+// Accepted/Rejected leave it untouched, so an interview that ended in a later
+// accept/reject still counts as an interview.
+function applyInterviewMilestone(app) {
+    if (app.status === 'Pending' || app.status === 'Applied') {
+        app.reached_interview = false;
+    } else if (INTERVIEW_STATUSES.includes(app.status)) {
+        app.reached_interview = true;
+    }
+}
+
 // ── LOAD ────────────────────────────────────────────────────────────────────
 
 async function loadApplications() {
@@ -25,6 +40,7 @@ async function loadApplications() {
                         date_applied: row.date_applied || '',
                         status: row.status,
                         notes: row.notes || '',
+                        reached_interview: row.reached_interview ?? false,
                     }));
                     localStorage.setItem('si_applications', JSON.stringify(applications));
                     renderTable();
@@ -75,6 +91,7 @@ async function syncLocalApps(user) {
                 date_applied: app.date_applied || null,
                 status: app.status,
                 notes: app.notes,
+                reached_interview: app.reached_interview ?? false,
             })
             .select()
             .single();
@@ -133,6 +150,7 @@ async function saveApplication(entry) {
                         date_applied: entry.date_applied || null,
                         status: entry.status,
                         notes: entry.notes,
+                        reached_interview: entry.reached_interview ?? false,
                     })
                     .eq('id', entry.id);
                 if (error) console.error('Update failed:', error.message);
@@ -149,6 +167,7 @@ async function saveApplication(entry) {
                         date_applied: entry.date_applied || null,
                         status: entry.status,
                         notes: entry.notes,
+                        reached_interview: entry.reached_interview ?? false,
                     })
                     .select()
                     .single();
@@ -196,6 +215,7 @@ async function resetApp(index) {
     if (!ok) return;
 
     app.status = 'Pending';
+    applyInterviewMilestone(app); // Pending clears the interview milestone
     await saveApplication(app);   // persists to Supabase (if synced) + localStorage
     renderTable();
 }
@@ -267,14 +287,11 @@ function updateStats() {
     renderInsights();
 }
 
-// Interview-stage statuses (includes the legacy 'Interview').
-const INTERVIEW_STATUSES = ['1st Round Interview', '2nd Round Interview', 'Interview'];
-
-// Builds the funnel (Applied / Interviewing / Offers) and the rates from the
-// in-memory applications array. Everything is derived from each application's
-// CURRENT status only — one application counts in exactly one place, so editing a
-// status updates the stats immediately and nothing sticks. All values are derived,
-// so the markup is built from numbers/static labels only (no user input to escape).
+// Builds the funnel (Applied / Interviewed / Offers) and the rates from the
+// in-memory applications array. "Interviewed" uses the reached_interview milestone
+// (so it survives a later accept/reject); "Offers" uses the current Accepted status
+// (so a rescinded/rejected offer drops off). All values are derived, so the markup
+// is built from numbers/static labels only (no user input to escape).
 function renderInsights() {
     const total = applications.length;
 
@@ -289,22 +306,22 @@ function renderInsights() {
         return;
     }
 
-    const interviewing = applications.filter(a => INTERVIEW_STATUSES.includes(a.status)).length;
-    const offers       = applications.filter(a => a.status === 'Accepted').length;
-    const rejected     = applications.filter(a => a.status === 'Rejected').length;
-    // Heard back = anything that has moved past Pending/Applied.
-    const responded    = interviewing + offers + rejected;
+    const interviewed = applications.filter(a => a.reached_interview).length;
+    const offers      = applications.filter(a => a.status === 'Accepted').length;
+    // Heard back = ever interviewed, currently holding an offer, or rejected.
+    const responded   = applications.filter(a =>
+        a.reached_interview || a.status === 'Accepted' || a.status === 'Rejected').length;
 
     sub.textContent = `across ${total} application${total === 1 ? '' : 's'}`;
 
     const pct = n => total ? Math.round((n / total) * 100) : 0;
 
-    // Funnel stages reflect where applications CURRENTLY stand. Bar width is relative
-    // to total so the three bars read as a funnel.
+    // Funnel: Interviewed is the milestone count; Offers is the current-Accepted count.
+    // Bar width is relative to total.
     const stages = [
-        { label: 'Applied',      count: total,        cls: 'applied' },
-        { label: 'Interviewing', count: interviewing, cls: 'interviewed' },
-        { label: 'Offers',       count: offers,       cls: 'offers' },
+        { label: 'Applied',     count: total,       cls: 'applied' },
+        { label: 'Interviewed', count: interviewed, cls: 'interviewed' },
+        { label: 'Offers',      count: offers,      cls: 'offers' },
     ];
     funnelEl.innerHTML = stages.map(s => `
         <div class="funnel_stage">
@@ -321,9 +338,9 @@ function renderInsights() {
 
     // Headline rates, each as a share of all applications (always 0–100%).
     const rates = [
-        { pct: pct(responded),    label: 'Response rate',  hint: 'heard back — interviewing, offer, or rejection' },
-        { pct: pct(interviewing), label: 'Interview rate', hint: 'currently interviewing' },
-        { pct: pct(offers),       label: 'Offer rate',     hint: 'currently hold an offer' },
+        { pct: pct(responded),   label: 'Response rate',  hint: 'heard back — interview, offer, or rejection' },
+        { pct: pct(interviewed), label: 'Interview rate', hint: 'reached an interview at some point' },
+        { pct: pct(offers),      label: 'Offer rate',     hint: 'currently hold an offer' },
     ];
     ratesEl.innerHTML = rates.map(r => `
         <div class="rate_card" title="${r.hint}">
@@ -402,6 +419,11 @@ document.getElementById('modal_save').addEventListener('click', async () => {
         status: document.getElementById('m_status').value,
         notes: document.getElementById('m_notes').value.trim(),
     };
+
+    // Carry the interview milestone forward from the existing row, then let the new
+    // status update it (reaching an interview sets it; Pending clears it).
+    entry.reached_interview = editingId !== null ? (applications[editingId].reached_interview || false) : false;
+    applyInterviewMilestone(entry);
 
     if (editingId !== null) {
         entry.id = applications[editingId].id;
