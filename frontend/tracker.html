@@ -55,7 +55,10 @@
       <div class="tracker_section">
         <div class="tracker_header">
           <h2 class="tracker_title">My Applications</h2>
-          <button class="add_btn" id="add_btn">Add Application</button>
+          <div class="tracker_actions">
+            <button class="import_btn" id="import_btn">Import</button>
+            <button class="add_btn" id="add_btn">Add Application</button>
+          </div>
         </div>
 
         <div class="table_wrapper">
@@ -138,6 +141,31 @@
         <div class="modal_footer">
           <button class="modal_cancel" id="modal_cancel">Cancel</button>
           <button class="modal_save" id="modal_save">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div id="import_overlay" class="modal_overlay" style="display:none;">
+      <div class="modal import_modal">
+        <div class="modal_header">
+          <h3>Import applications</h3>
+          <button class="modal_close" id="import_close">&#10005;</button>
+        </div>
+        <div class="modal_body">
+          <p class="import_hint">
+            Paste rows from a spreadsheet (copied straight from Google Sheets/Excel) or CSV.
+            Include a header row if you can — e.g. <code>Position, Company, Location, Pay, Date, Status, Notes</code>.
+            With a header, column order doesn't matter. <strong>Position</strong> and <strong>Company</strong> are required; everything else is optional.
+          </p>
+          <input type="file" id="import_file" accept=".csv,.tsv,.txt" class="import_file" />
+          <textarea id="import_text" rows="9" class="import_textarea"
+            placeholder="Position, Company, Location, Pay, Date, Status, Notes&#10;Software Engineering Intern, Google, Remote, , 2026-01-15, Applied, referral from Sam&#10;Backend Intern, Stripe, NYC, $45/hr, 2026-01-20, 1st Round Interview,"></textarea>
+          <div class="import_preview" id="import_preview"></div>
+        </div>
+        <div class="modal_footer">
+          <button class="modal_cancel" id="import_cancel">Cancel</button>
+          <button class="modal_save" id="import_confirm" disabled>Import</button>
         </div>
       </div>
     </div>

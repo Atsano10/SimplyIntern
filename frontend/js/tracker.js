@@ -437,6 +437,236 @@ document.getElementById('modal_save').addEventListener('click', async () => {
     closeModal();
 });
 
+// ── IMPORT ───────────────────────────────────────────────────────────────────
+
+// Column-header aliases → our internal fields (case/space-insensitive match).
+const IMPORT_HEADER_ALIASES = {
+    position:     ['position', 'role', 'title', 'job', 'job title', 'jobtitle', 'posting'],
+    company:      ['company', 'employer', 'organization', 'organisation', 'org'],
+    location:     ['location', 'city', 'place', 'where', 'loc'],
+    pay:          ['pay', 'salary', 'compensation', 'pay rate', 'payrate', 'rate', 'stipend'],
+    date_applied: ['date', 'date applied', 'applied', 'application date', 'applied on', 'dateapplied'],
+    status:       ['status', 'stage', 'result', 'outcome'],
+    notes:        ['notes', 'note', 'comments', 'comment'],
+};
+
+// Positional order assumed when the pasted data has no recognizable header row.
+const IMPORT_POSITIONAL = ['position', 'company', 'location', 'pay', 'date_applied', 'status', 'notes'];
+
+// Maps a free-text status onto our known set; defaults to 'Pending'.
+function normalizeImportStatus(raw) {
+    const s = (raw || '').trim().toLowerCase();
+    if (!s) return 'Pending';
+    if (/reject|declin|denied/.test(s))                   return 'Rejected';
+    if (/accept|offer|hired/.test(s))                     return 'Accepted';
+    if (/2nd|second|final|round 2|onsite|super/.test(s))  return '2nd Round Interview';
+    if (/interview|1st|first|phone|screen|round|technical/.test(s)) return '1st Round Interview';
+    return 'Pending'; // applied / pending / submitted / unknown
+}
+
+// Best-effort date → YYYY-MM-DD; '' if unparseable.
+function normalizeImportDate(raw) {
+    const s = (raw || '').trim();
+    if (!s) return '';
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+}
+
+// Picks the delimiter from the first non-empty line: tabs (spreadsheet paste) win,
+// otherwise commas.
+function detectDelimiter(text) {
+    const line = text.split(/\r?\n/).find(l => l.trim() !== '') || '';
+    const tabs = (line.match(/\t/g) || []).length;
+    const commas = (line.match(/,/g) || []).length;
+    return tabs > 0 && tabs >= commas ? '\t' : ',';
+}
+
+// Splits delimited text into rows of fields, honoring "quoted, fields" and escaped
+// "" quotes. Blank rows are dropped.
+function parseDelimited(text, delim) {
+    const rows = [];
+    let row = [], field = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (inQuotes) {
+            if (c === '"') {
+                if (text[i + 1] === '"') { field += '"'; i++; }
+                else inQuotes = false;
+            } else field += c;
+        } else if (c === '"') {
+            inQuotes = true;
+        } else if (c === delim) {
+            row.push(field); field = '';
+        } else if (c === '\n') {
+            row.push(field); rows.push(row); row = []; field = '';
+        } else if (c !== '\r') {
+            field += c;
+        }
+    }
+    row.push(field);
+    rows.push(row);
+    return rows.filter(r => r.some(cell => cell.trim() !== ''));
+}
+
+// Returns a field→columnIndex map if the first row looks like a header, else null.
+function detectHeaderMap(cells) {
+    const map = {};
+    let hits = 0;
+    cells.forEach((cell, i) => {
+        const norm = cell.trim().toLowerCase();
+        for (const [field, aliases] of Object.entries(IMPORT_HEADER_ALIASES)) {
+            if (!(field in map) && aliases.includes(norm)) { map[field] = i; hits++; break; }
+        }
+    });
+    return (hits >= 2 && ('company' in map || 'position' in map)) ? map : null;
+}
+
+// Parses pasted text into { entries, skipped, headerDetected }.
+function parseImport(text) {
+    const result = { entries: [], skipped: 0, headerDetected: false };
+    if (!text.trim()) return result;
+
+    const rows = parseDelimited(text, detectDelimiter(text));
+    if (rows.length === 0) return result;
+
+    const headerMap = detectHeaderMap(rows[0]);
+    const dataRows = headerMap ? rows.slice(1) : rows;
+    result.headerDetected = !!headerMap;
+
+    for (const cells of dataRows) {
+        const get = field => {
+            const idx = headerMap ? headerMap[field] : IMPORT_POSITIONAL.indexOf(field);
+            return (idx != null && idx >= 0 && idx < cells.length) ? cells[idx].trim() : '';
+        };
+
+        const position = get('position');
+        const company  = get('company');
+        if (!position || !company) { result.skipped++; continue; }
+
+        const entry = {
+            position,
+            company,
+            location:     get('location'),
+            pay:          get('pay'),
+            date_applied: normalizeImportDate(get('date_applied')),
+            status:       normalizeImportStatus(get('status')),
+            notes:        get('notes'),
+        };
+        applyInterviewMilestone(entry);
+        result.entries.push(entry);
+    }
+    return result;
+}
+
+function openImportModal() {
+    document.getElementById('import_text').value = '';
+    document.getElementById('import_file').value = '';
+    document.getElementById('import_preview').textContent = '';
+    document.getElementById('import_confirm').disabled = true;
+    document.getElementById('import_overlay').style.display = 'flex';
+}
+
+function closeImportModal() {
+    document.getElementById('import_overlay').style.display = 'none';
+}
+
+// Live preview: count of importable rows + a small sample.
+function renderImportPreview() {
+    const text = document.getElementById('import_text').value;
+    const preview = document.getElementById('import_preview');
+    const confirmBtn = document.getElementById('import_confirm');
+
+    if (!text.trim()) {
+        preview.textContent = '';
+        confirmBtn.disabled = true;
+        return;
+    }
+
+    const parsed = parseImport(text);
+    const n = parsed.entries.length;
+    confirmBtn.disabled = n === 0;
+
+    let msg = `${n} application${n === 1 ? '' : 's'} ready to import`;
+    if (parsed.headerDetected) msg += ' · header detected';
+    if (parsed.skipped) msg += ` · ${parsed.skipped} skipped (missing position/company)`;
+
+    if (n > 0) {
+        const sample = parsed.entries.slice(0, 3)
+            .map(e => `• ${e.position} — ${e.company}${e.status !== 'Pending' ? ' (' + e.status + ')' : ''}`)
+            .join('\n');
+        msg += '\n' + sample + (n > 3 ? `\n…and ${n - 3} more` : '');
+    }
+    preview.textContent = msg;
+}
+
+async function doImport() {
+    const parsed = parseImport(document.getElementById('import_text').value);
+    if (parsed.entries.length === 0) return;
+
+    const confirmBtn = document.getElementById('import_confirm');
+    confirmBtn.disabled = true;
+
+    let synced = false;
+    try {
+        const { data: { user } } = await client.auth.getUser();
+        if (user) {
+            const payload = parsed.entries.map(e => ({
+                user_id:           user.id,
+                position:          e.position,
+                company:           e.company,
+                location:          e.location,
+                pay:               e.pay,
+                date_applied:      e.date_applied || null,
+                status:            e.status,
+                notes:             e.notes,
+                reached_interview: e.reached_interview ?? false,
+            }));
+            const { error } = await client.from('applications').insert(payload);
+            if (error) showSyncBanner(error.message);
+            else synced = true;
+        }
+    } catch (_) {}
+
+    closeImportModal();
+
+    if (synced) {
+        // Reload from the cloud so the imported rows come back with their real ids.
+        await loadApplications();
+    } else {
+        // Logged out or sync failed — keep them locally (no ids).
+        applications = parsed.entries.concat(applications);
+        localStorage.setItem('si_applications', JSON.stringify(applications));
+        renderTable();
+    }
+
+    await showAlert(
+        `Imported ${parsed.entries.length} application${parsed.entries.length === 1 ? '' : 's'}.` +
+        (parsed.skipped ? ` ${parsed.skipped} row${parsed.skipped === 1 ? '' : 's'} skipped (missing position or company).` : ''),
+        'Import complete'
+    );
+}
+
+document.getElementById('import_btn').addEventListener('click', openImportModal);
+document.getElementById('import_close').addEventListener('click', closeImportModal);
+document.getElementById('import_cancel').addEventListener('click', closeImportModal);
+document.getElementById('import_overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('import_overlay')) closeImportModal();
+});
+document.getElementById('import_text').addEventListener('input', renderImportPreview);
+document.getElementById('import_confirm').addEventListener('click', doImport);
+
+// File picker loads the file's text into the textarea, then previews it.
+document.getElementById('import_file').addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        document.getElementById('import_text').value = String(reader.result || '');
+        renderImportPreview();
+    };
+    reader.readAsText(file);
+});
+
 // ── INIT ─────────────────────────────────────────────────────────────────────
 
 loadApplications();
