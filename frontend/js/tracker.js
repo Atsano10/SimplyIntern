@@ -395,9 +395,12 @@ document.getElementById('modal_save').addEventListener('click', async () => {
         notes: document.getElementById('m_notes').value.trim(),
     };
 
-    // High-water mark: never below what this application previously reached.
+    // max_stage follows the chosen status for real stages, so fixing a mis-set
+    // status corrects the funnel immediately. The one exception is 'Rejected' — an
+    // outcome with no stage of its own — where we PRESERVE the furthest stage already
+    // reached, so a genuine rejection doesn't erase an earlier interview.
     const priorMax = editingId !== null ? (applications[editingId].max_stage || 0) : 0;
-    entry.max_stage = Math.max(priorMax, rankOf(entry.status));
+    entry.max_stage = entry.status === 'Rejected' ? priorMax : rankOf(entry.status);
 
     if (editingId !== null) {
         entry.id = applications[editingId].id;
