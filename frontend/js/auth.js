@@ -145,6 +145,16 @@ async function logIn(){
         return
     }
 
+    // Defense in depth: never let an unverified account through, even if a session
+    // was somehow issued (e.g. the account predates enabling email confirmation).
+    if (data.user && !data.user.email_confirmed_at) {
+        await client.auth.signOut()
+        localStorage.setItem('si_pending_email', email)
+        showVerifyNotice()
+        await showAlert('Please verify your email before logging in. Check your inbox for the link, or resend it below.', 'Verify your email')
+        return
+    }
+
     window.location.href = 'search.html'
 }
 
@@ -165,6 +175,13 @@ async function googleSignIn() {
 async function checkSession() {
     const { data: { session } } = await client.auth.getSession()
     if (session) {
+        // Defense in depth: an unconfirmed session must not reach the app. This also
+        // invalidates sessions created before email confirmation was enabled.
+        if (!session.user.email_confirmed_at) {
+            await client.auth.signOut()
+            return
+        }
+
         const { data: profile } = await client
             .from('profiles')
             .select('username')
