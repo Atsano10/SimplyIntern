@@ -467,9 +467,14 @@ function parseGithubReadme(content: string): Listing[] {
 
 // Fetches the README from a GitHub repo, trying dev → main → master in order.
 // Returns as soon as it finds a branch with actual listings.
-async function fetchGithubRepo(owner: string, repo: string, token?: string): Promise<Listing[]> {
+//
+// IMPORTANT: we deliberately send NO Authorization header. raw.githubusercontent.com
+// is an unauthenticated CDN -- it is NOT the GitHub API and is not subject to the
+// 60-req/hr limit, so a token buys nothing. Worse, an invalid/expired token makes
+// raw.githubusercontent.com return 404 for every branch, which silently killed all
+// GitHub ingestion (the catch swallows it) and left the DB Greenhouse-only.
+async function fetchGithubRepo(owner: string, repo: string): Promise<Listing[]> {
   const headers: Record<string, string> = { 'User-Agent': 'SimplyIntern/1.0' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
 
   for (const branch of ['dev', 'main', 'master']) {
     try {
@@ -488,20 +493,18 @@ async function fetchGithubRepo(owner: string, repo: string, token?: string): Pro
 }
 
 // Main handler
-// This runs on a daily schedule. It pulls fresh listings from Greenhouse and GitHub,
-// deduplicates by URL, upserts everything to the DB, and cleans up anything
-// that hasn't been seen in the last 30 days.
+// Invoked daily by the pg_cron job in migration 010 (and manually on demand). It
+// pulls fresh listings from Greenhouse and GitHub, deduplicates by URL, upserts
+// everything to the DB, and cleans up anything not seen in the last 30 days.
 Deno.serve(async (_req: Request) => {
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
-  const githubToken = Deno.env.get('GITHUB_TOKEN');
-
   // Fetch all sources in parallel to keep the function fast
   const [ghResults, gitResults] = await Promise.all([
     Promise.all(GREENHOUSE_COMPANIES.map(fetchGreenhouse)),
-    Promise.all(GITHUB_REPOS.map(({ owner, repo }) => fetchGithubRepo(owner, repo, githubToken))),
+    Promise.all(GITHUB_REPOS.map(({ owner, repo }) => fetchGithubRepo(owner, repo))),
   ]);
 
   const allJobs: Listing[] = [
