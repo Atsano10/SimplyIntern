@@ -240,9 +240,21 @@ document.getElementById('ms_industry_btn').addEventListener('click', () => msTog
 document.getElementById('ms_type_btn').addEventListener('click', () => msToggle('ms_type'));
 document.getElementById('clear_btn').addEventListener('click', clearFilters);
 
+// Sort / recency / remote / paid controls re-run the search immediately, but only
+// once results are on screen (so changing them before the first Search is a no-op).
+['sort_select', 'posted_select', 'remote_only', 'paid_only'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => {
+    if (document.getElementById('job_list').classList.contains('visible')) performSearch();
+  });
+});
+
 // Resets the keyword input, unchecks all filter options, and snaps the button labels back to default
 function clearFilters() {
   document.getElementById('search_input').value = '';
+  document.getElementById('sort_select').value = 'newest';
+  document.getElementById('posted_select').value = '';
+  document.getElementById('remote_only').checked = false;
+  document.getElementById('paid_only').checked = false;
 
   [
     { id: 'ms_location',  key: 'locations'  },
@@ -280,11 +292,17 @@ async function performSearch() {
   // Expand each selected location label into its DB query patterns
   const locationPatterns = [...msState.locations].flatMap(c => locationPatternMap[c] || [`%${c}%`]);
 
+  const postedVal = document.getElementById('posted_select').value;
+
   currentFilters = {
     keyword:          document.getElementById('search_input').value.trim(),
     locationPatterns,
     industries:       [...msState.industries],
     jobTypes:         [...msState.jobTypes],
+    sort:             document.getElementById('sort_select').value,
+    postedWithinDays: postedVal ? Number(postedVal) : null,
+    remoteOnly:       document.getElementById('remote_only').checked,
+    paidOnly:         document.getElementById('paid_only').checked,
   };
   currentOffset = 0;
   hasMore       = true;

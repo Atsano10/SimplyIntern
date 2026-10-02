@@ -42,12 +42,16 @@ async function fetchJobs(filters = {}, offset = 0, limit = 50) {
   const locationPatterns = filters.locationPatterns || [];
 
   const { data, error } = await client.rpc('search_listings', {
-    p_keyword:           filters.keyword || null,
-    p_location_patterns: locationPatterns.length ? locationPatterns : null,
-    p_industry_patterns: industryPatterns.length ? industryPatterns : null,
-    p_type_patterns:     typePatterns.length ? typePatterns : null,
-    p_limit:             limit,
-    p_offset:            offset,
+    p_keyword:            filters.keyword || null,
+    p_location_patterns:  locationPatterns.length ? locationPatterns : null,
+    p_industry_patterns:  industryPatterns.length ? industryPatterns : null,
+    p_type_patterns:      typePatterns.length ? typePatterns : null,
+    p_posted_within_days: filters.postedWithinDays ?? null,
+    p_remote_only:        !!filters.remoteOnly,
+    p_has_pay:            !!filters.paidOnly,
+    p_sort:               filters.sort || 'newest',
+    p_limit:              limit,
+    p_offset:             offset,
   });
 
   if (error) throw error;

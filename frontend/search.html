@@ -52,6 +52,21 @@
           <button class="search_btn" id="search_btn">Search</button>
           <button class="clear_btn" id="clear_btn">Clear</button>
         </div>
+        <div class="search_filters search_filters_secondary">
+          <select id="sort_select" class="filter_dropdown" aria-label="Sort results">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="company">Company A–Z</option>
+          </select>
+          <select id="posted_select" class="filter_dropdown" aria-label="Posted within">
+            <option value="">Any time</option>
+            <option value="7">Last 7 days</option>
+            <option value="14">Last 14 days</option>
+            <option value="30">Last 30 days</option>
+          </select>
+          <label class="filter_toggle"><input type="checkbox" id="remote_only" /> Remote only</label>
+          <label class="filter_toggle"><input type="checkbox" id="paid_only" /> Paid only</label>
+        </div>
       </div>
 
       <div class="results_area">
