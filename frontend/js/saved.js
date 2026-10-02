@@ -121,7 +121,6 @@ async function applyFromSaved(job, btn) {
     pay:       job.pay || 'Not listed',
     status:    'Pending',
     notes:     '',
-    max_stage: 0,
   };
 
   try {
@@ -136,7 +135,6 @@ async function applyFromSaved(job, btn) {
         pay:        entry.pay,
         status:     entry.status,
         notes:      entry.notes,
-        max_stage:  0,
       }).select().single();
       if (data) entry.id = data.id;
     }

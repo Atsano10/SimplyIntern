@@ -1,17 +1,6 @@
 let applications = [];
 let editingId = null; // Supabase UUID or localStorage index
 
-// Funnel stage rank per status (see migration 011). Rejected carries no rank — it's
-// an outcome, not a stage — so a rejection never lowers an application's high-water mark.
-const STAGE_RANK = {
-    'Pending': 0, 'Applied': 0,
-    '1st Round Interview': 1, 'Interview': 1,
-    '2nd Round Interview': 2,
-    'Accepted': 3,
-    'Rejected': 0,
-};
-const rankOf = status => STAGE_RANK[status] ?? 0;
-
 // ── LOAD ────────────────────────────────────────────────────────────────────
 
 async function loadApplications() {
@@ -36,7 +25,6 @@ async function loadApplications() {
                         date_applied: row.date_applied || '',
                         status: row.status,
                         notes: row.notes || '',
-                        max_stage: row.max_stage ?? 0,
                     }));
                     localStorage.setItem('si_applications', JSON.stringify(applications));
                     renderTable();
@@ -87,7 +75,6 @@ async function syncLocalApps(user) {
                 date_applied: app.date_applied || null,
                 status: app.status,
                 notes: app.notes,
-                max_stage: app.max_stage ?? rankOf(app.status),
             })
             .select()
             .single();
@@ -146,7 +133,6 @@ async function saveApplication(entry) {
                         date_applied: entry.date_applied || null,
                         status: entry.status,
                         notes: entry.notes,
-                        max_stage: entry.max_stage ?? rankOf(entry.status),
                     })
                     .eq('id', entry.id);
                 if (error) console.error('Update failed:', error.message);
@@ -163,7 +149,6 @@ async function saveApplication(entry) {
                         date_applied: entry.date_applied || null,
                         status: entry.status,
                         notes: entry.notes,
-                        max_stage: entry.max_stage ?? rankOf(entry.status),
                     })
                     .select()
                     .single();
@@ -195,6 +180,23 @@ async function deleteApp(index) {
 
     applications.splice(index, 1);
     localStorage.setItem('si_applications', JSON.stringify(applications));
+    renderTable();
+}
+
+// Resets a single application back to 'Pending', which clears its interview/offer
+// contribution to the funnel (stats read current status, so this fully restarts it).
+async function resetApp(index) {
+    const app = applications[index];
+    if (!app || app.status === 'Pending') return;
+
+    const ok = await showConfirm(
+        `Reset "${app.position}" back to Pending? This clears its interview/offer progress in your stats.`,
+        'Reset application'
+    );
+    if (!ok) return;
+
+    app.status = 'Pending';
+    await saveApplication(app);   // persists to Supabase (if synced) + localStorage
     renderTable();
 }
 
@@ -237,6 +239,7 @@ function renderTable() {
             <td><span class="status_badge ${cls}">${esc(app.status)}</span></td>
             <td>${esc(app.notes) || '—'}</td>
             <td class="row_actions">
+                ${app.status !== 'Pending' ? `<button class="row_reset" data-index="${i}" title="Reset to Pending">&#8634;</button>` : ''}
                 <button class="row_edit" data-index="${i}" title="Edit">&#9998;</button>
                 <button class="row_delete" data-index="${i}" title="Remove">&#10005;</button>
             </td>
@@ -264,11 +267,14 @@ function updateStats() {
     renderInsights();
 }
 
-// Builds the funnel (Applied → Interviewed → Offers) and the conversion rates from
-// the in-memory applications array. Counts come from each application's max_stage
-// high-water mark (migration 011), so a later rejection no longer erases the fact
-// that an application reached an interview or offer. All values are derived, so the
-// markup is built from numbers/static labels only (no user input to escape).
+// Interview-stage statuses (includes the legacy 'Interview').
+const INTERVIEW_STATUSES = ['1st Round Interview', '2nd Round Interview', 'Interview'];
+
+// Builds the funnel (Applied / Interviewing / Offers) and the rates from the
+// in-memory applications array. Everything is derived from each application's
+// CURRENT status only — one application counts in exactly one place, so editing a
+// status updates the stats immediately and nothing sticks. All values are derived,
+// so the markup is built from numbers/static labels only (no user input to escape).
 function renderInsights() {
     const total = applications.length;
 
@@ -278,26 +284,27 @@ function renderInsights() {
 
     if (total === 0) {
         sub.textContent = '';
-        funnelEl.innerHTML = '<div class="insights_empty">Track a few applications to see your funnel and conversion rates here.</div>';
+        funnelEl.innerHTML = '<div class="insights_empty">Track a few applications to see your funnel and response rates here.</div>';
         ratesEl.innerHTML = '';
         return;
     }
 
-    const stage = a => a.max_stage || 0;
-    const reachedInterview = applications.filter(a => stage(a) >= 1).length;
-    const offers           = applications.filter(a => stage(a) >= 3).length;
-    // Heard back = reached an interview at some point OR got an explicit rejection.
-    const responded        = applications.filter(a => stage(a) >= 1 || a.status === 'Rejected').length;
+    const interviewing = applications.filter(a => INTERVIEW_STATUSES.includes(a.status)).length;
+    const offers       = applications.filter(a => a.status === 'Accepted').length;
+    const rejected     = applications.filter(a => a.status === 'Rejected').length;
+    // Heard back = anything that has moved past Pending/Applied.
+    const responded    = interviewing + offers + rejected;
 
     sub.textContent = `across ${total} application${total === 1 ? '' : 's'}`;
 
-    const pct = (n, d = total) => d ? Math.round((n / d) * 100) : 0;
+    const pct = n => total ? Math.round((n / total) * 100) : 0;
 
-    // Funnel stages: bar width is relative to total so the three bars read as a funnel.
+    // Funnel stages reflect where applications CURRENTLY stand. Bar width is relative
+    // to total so the three bars read as a funnel.
     const stages = [
-        { label: 'Applied',     count: total,            cls: 'applied' },
-        { label: 'Interviewed', count: reachedInterview, cls: 'interviewed' },
-        { label: 'Offers',      count: offers,           cls: 'offers' },
+        { label: 'Applied',      count: total,        cls: 'applied' },
+        { label: 'Interviewing', count: interviewing, cls: 'interviewed' },
+        { label: 'Offers',       count: offers,       cls: 'offers' },
     ];
     funnelEl.innerHTML = stages.map(s => `
         <div class="funnel_stage">
@@ -312,12 +319,11 @@ function renderInsights() {
         </div>
     `).join('');
 
-    // Conversion rates: response rate, Applied→Interview, and Interview→Offer
-    // (the last is relative to interviews, not total — a true stage conversion).
+    // Headline rates, each as a share of all applications (always 0–100%).
     const rates = [
-        { pct: pct(responded),                       label: 'Response rate',     hint: 'heard back (interview or rejection)' },
-        { pct: pct(reachedInterview),                label: 'Applied → Interview', hint: 'share of applications that reached an interview' },
-        { pct: pct(offers, reachedInterview),        label: 'Interview → Offer',  hint: 'share of interviews that became offers' },
+        { pct: pct(responded),    label: 'Response rate',  hint: 'heard back — interviewing, offer, or rejection' },
+        { pct: pct(interviewing), label: 'Interview rate', hint: 'currently interviewing' },
+        { pct: pct(offers),       label: 'Offer rate',     hint: 'currently hold an offer' },
     ];
     ratesEl.innerHTML = rates.map(r => `
         <div class="rate_card" title="${r.hint}">
@@ -363,10 +369,12 @@ function closeModal() {
 // Edit/Delete are bound via delegation (rows are re-rendered, so we listen on
 // the stable tbody instead of using inline onclick — required for a strict CSP).
 document.getElementById('app_tbody').addEventListener('click', e => {
-    const editBtn = e.target.closest('.row_edit');
-    const delBtn  = e.target.closest('.row_delete');
+    const editBtn  = e.target.closest('.row_edit');
+    const delBtn   = e.target.closest('.row_delete');
+    const resetBtn = e.target.closest('.row_reset');
     if (editBtn) openModal(Number(editBtn.dataset.index));
     else if (delBtn) deleteApp(Number(delBtn.dataset.index));
+    else if (resetBtn) resetApp(Number(resetBtn.dataset.index));
 });
 
 document.getElementById('add_btn').addEventListener('click', () => openModal());
@@ -394,13 +402,6 @@ document.getElementById('modal_save').addEventListener('click', async () => {
         status: document.getElementById('m_status').value,
         notes: document.getElementById('m_notes').value.trim(),
     };
-
-    // max_stage follows the chosen status for real stages, so fixing a mis-set
-    // status corrects the funnel immediately. The one exception is 'Rejected' — an
-    // outcome with no stage of its own — where we PRESERVE the furthest stage already
-    // reached, so a genuine rejection doesn't erase an earlier interview.
-    const priorMax = editingId !== null ? (applications[editingId].max_stage || 0) : 0;
-    entry.max_stage = entry.status === 'Rejected' ? priorMax : rankOf(entry.status);
 
     if (editingId !== null) {
         entry.id = applications[editingId].id;

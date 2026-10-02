@@ -289,6 +289,7 @@ body {
     align-items: center;
 }
 
+.row_reset,
 .row_edit {
     background: none;
     border: none;
@@ -299,6 +300,7 @@ body {
     transition: color 0.15s, background 0.15s;
 }
 
+.row_reset:hover,
 .row_edit:hover {
     color: #702632;
     background: #f3e6e8;
@@ -505,7 +507,9 @@ body.dark .app_table tbody tr:hover td { background: #3a2a2c; }
 
 body.dark .table_empty { color: #9a8284; }
 
+body.dark .row_reset,
 body.dark .row_edit { color: #9a8284; }
+body.dark .row_reset:hover,
 body.dark .row_edit:hover { color: #eeb9c2; background: #4a3035; }
 body.dark .row_delete { color: #9a8284; }
 body.dark .row_delete:hover { color: #eeb9c2; background: #4a3035; }
