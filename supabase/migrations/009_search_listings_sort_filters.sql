@@ -12,9 +12,23 @@
 -- nothing. A pay filter only becomes possible once a structured pay column is
 -- populated at scrape time.
 --
--- CREATE OR REPLACE can't change a function's argument list, so we drop the old
--- 6-arg signature first, then recreate with the new parameters.
-DROP FUNCTION IF EXISTS public.search_listings(text, text[], text[], text[], int, int);
+-- CREATE OR REPLACE can't change a function's argument list, and earlier drafts of
+-- this migration shipped different signatures (one briefly had a p_has_pay arg).
+-- To be safe to re-run from ANY prior state, drop EVERY overload of
+-- search_listings first -- otherwise leftover overloads make PostgREST fail with
+-- an "ambiguous function" error when the frontend calls it.
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT oid::regprocedure AS sig
+    FROM pg_proc
+    WHERE proname = 'search_listings'
+      AND pronamespace = 'public'::regnamespace
+  LOOP
+    EXECUTE 'DROP FUNCTION ' || r.sig;
+  END LOOP;
+END $$;
 
 CREATE OR REPLACE FUNCTION public.search_listings(
   p_keyword            text    DEFAULT NULL,
