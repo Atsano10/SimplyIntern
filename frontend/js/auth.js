@@ -6,21 +6,39 @@ const client = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 async function signUp() {
     // Take user input
-    const email = document.getElementById('email').value
-    const username = document.getElementById('username').value
+    const email = document.getElementById('email').value.trim()
+    const username = document.getElementById('username').value.trim()
     const password = document.getElementById('password').value
     const confirmPassword = document.getElementById("con_password").value
 
-    // confirm passwords match
-    if (confirmPassword != password) {
+    if (!email || !username || !password) {
+        await showAlert('Please fill in your email, username, and password.', 'Sign up')
+        return
+    }
+    if (confirmPassword !== password) {
         await showAlert('Passwords do not match!', 'Sign up')
         return
     }
 
-    // create auth account (Supabase enforces unique email in auth.users)
+    // Pre-check the username. If email confirmation is enabled, profile creation is
+    // deferred until the user confirms (see below), so we can't rely on the insert to
+    // surface a duplicate at signup time. username_exists is a safe anon-callable RPC.
+    const { data: taken } = await client.rpc('username_exists', { p_username: username })
+    if (taken) {
+        await showAlert('Username already taken!', 'Sign up')
+        return
+    }
+
+    // Create the auth account. The chosen username rides along in user_metadata so the
+    // profile can be created after confirmation even on a different device, and the
+    // confirmation link returns the user to the login page.
     const { data, error } = await client.auth.signUp({
-        email: email,
-        password: password
+        email,
+        password,
+        options: {
+            data: { username },
+            emailRedirectTo: window.location.origin + '/index.html',
+        },
     })
 
     if (error) {
@@ -28,12 +46,28 @@ async function signUp() {
         return
     }
 
-    // save profile. The DB unique constraints on username/email are the source
-    // of truth — we no longer pre-check profiles (which required public reads).
+    // Supabase obfuscates re-signups of an already-registered email: it returns a user
+    // with an empty identities array and no error. Treat that as "already exists".
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        await showAlert('An account with this email already exists. Try logging in instead.', 'Sign up')
+        return
+    }
+
+    // No session => email confirmation is required. We CANNOT create the profile yet
+    // (RLS needs auth.uid()), so defer it to first sign-in and prompt verification.
+    if (!data.session) {
+        localStorage.setItem('si_pending_username', username)
+        localStorage.setItem('si_pending_email', email)
+        showVerifyNotice()
+        await showAlert(`We sent a verification link to ${email}. Click it to activate your account, then log in.`, 'Verify your email')
+        return
+    }
+
+    // Confirmation disabled: we have a session, so create the profile now.
     const { error: insertError } = await client.from('profiles').insert({
         id: data.user.id,
-        username: username,
-        email: email
+        username,
+        email,
     })
 
     if (insertError) {
@@ -56,8 +90,33 @@ async function signUp() {
     }
 
     await showAlert('Account created successfully!', 'Welcome to SimplyIntern')
-    window.location.href = 'index.html'
+    window.location.href = 'search.html'
 }
+
+// Reveals the "check your email" notice + resend link (present on login & signup pages).
+function showVerifyNotice() {
+    const notice = document.getElementById('verify_notice')
+    if (notice) notice.style.display = 'block'
+}
+
+// Re-sends the signup confirmation email. Uses the email field or the stashed address.
+async function resendVerification() {
+    const emailField = document.getElementById('email')
+    const email = (emailField && emailField.value.trim()) || localStorage.getItem('si_pending_email')
+    if (!email) {
+        await showAlert('Enter your email above first, then click “Resend email”.', 'Resend verification')
+        return
+    }
+    const { error } = await client.auth.resend({ type: 'signup', email })
+    if (error) {
+        await showAlert(error.message, 'Resend verification')
+        return
+    }
+    await showAlert('Verification email resent. Check your inbox (and spam).', 'Resend verification')
+}
+
+const resendLink = document.getElementById('resend_link')
+if (resendLink) resendLink.addEventListener('click', (e) => { e.preventDefault(); resendVerification() })
 
 async function logIn(){
     // Log in with email (username is a public display name, not a login key).
@@ -75,7 +134,14 @@ async function logIn(){
     })
 
     if (error) {
-        await showAlert('Incorrect email or password!', 'Log in failed')
+        // Supabase returns a specific error when the email hasn't been confirmed yet.
+        if (/email not confirmed|not confirmed|confirm/i.test(error.message)) {
+            localStorage.setItem('si_pending_email', email)
+            showVerifyNotice()
+            await showAlert('Your email isn’t verified yet. Check your inbox for the link, or resend it below.', 'Verify your email')
+        } else {
+            await showAlert('Incorrect email or password!', 'Log in failed')
+        }
         return
     }
 
@@ -108,16 +174,21 @@ async function checkSession() {
         if (profile) {
             window.location.href = 'search.html'
         } else {
-            // Google OAuth user with no profile — auto-create one from email prefix
-            const emailPrefix = session.user.email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_')
-            let username = emailPrefix
+            // No profile yet — either a Google OAuth user or someone who just confirmed
+            // their email. Prefer the username they picked at signup (carried in
+            // user_metadata, or stashed locally), falling back to the email prefix.
+            const desired = session.user.user_metadata?.username
+                || localStorage.getItem('si_pending_username')
+                || session.user.email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_')
+
+            let username = desired
             let suffix = 1
 
             while (true) {
                 // Safe availability check (profiles is no longer publicly readable)
                 const { data: taken } = await client.rpc('username_exists', { p_username: username })
                 if (!taken) break
-                username = emailPrefix + suffix
+                username = desired + suffix
                 suffix++
             }
 
@@ -131,6 +202,10 @@ async function checkSession() {
                 console.error('Profile creation failed:', insertError.message)
                 return
             }
+
+            // Signup is now fully complete — clear the stashed values.
+            localStorage.removeItem('si_pending_username')
+            localStorage.removeItem('si_pending_email')
 
             window.location.href = 'search.html'
         }

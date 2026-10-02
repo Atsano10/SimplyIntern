@@ -215,6 +215,18 @@
     text-decoration: underline;
 }
 
+.verify-notice {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: #fff3cd;
+    border: 1px solid #ffe08a;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #856404;
+    text-align: center;
+    line-height: 1.5;
+}
+
 /* ── MOBILE ── */
 @media (max-width: 768px) {
     .auth-page {
