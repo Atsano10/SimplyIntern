@@ -11,3 +11,6 @@ frontend/js/config.js
 
 # Dependencies
 node_modules/
+
+# Supabase CLI local state — not part of the project
+supabase/.temp/
