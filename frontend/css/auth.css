@@ -32,11 +32,13 @@
 }
 
 .hero-logo {
-    font-size: 32px;
-    font-weight: 700;
-    letter-spacing: -0.3px;
-    color: #eeb9c2;
     margin-bottom: 52px;
+}
+
+.hero-logo_img {
+    height: 42px;
+    width: auto;
+    display: block;
 }
 
 .hero-title {
@@ -241,6 +243,10 @@
 
     .hero-logo {
         margin-bottom: 16px;
+    }
+
+    .hero-logo_img {
+        height: 34px;
     }
 
     .hero-title {
