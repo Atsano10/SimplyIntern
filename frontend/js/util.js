@@ -141,5 +141,8 @@ function showPrompt({ title, message, placeholder = '', confirmText = 'OK', canc
 // ── Recruitment cycles ────────────────────────────────────────────────────────
 // Folders that always appear in the tracker. CURRENT_CYCLE is the one the
 // leaderboard counts — keep it in sync with the SQL literal in migration 013.
-const PREDEFINED_CYCLES = ['2026 Summer', '2026 Winter', '2026 Spring'];
-const CURRENT_CYCLE = '2026 Summer';
+// Named by when the internship STARTS (not when you apply). Students applying in
+// late 2026 are targeting these. CURRENT_CYCLE is what the leaderboard counts —
+// keep it in sync with the SQL literal in the latest cycles migration.
+const PREDEFINED_CYCLES = ['2027 Summer', '2027 Spring', '2026 Winter'];
+const CURRENT_CYCLE = '2027 Summer';
