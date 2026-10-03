@@ -508,20 +508,27 @@ function parseDelimited(text, delim) {
     return rows.filter(r => r.some(cell => cell.trim() !== ''));
 }
 
-// Returns a field→columnIndex map if the first row looks like a header, else null.
-function detectHeaderMap(cells) {
+// Normalizes a header cell for alias matching: lowercase, punctuation→space, collapsed.
+// So "Status:", "Pay Rate", "Date Applied " all match cleanly.
+function normalizeHeaderCell(cell) {
+    return cell.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// For a candidate header row, returns its field→columnIndex map and how many fields matched.
+function headerMapFor(cells) {
     const map = {};
     let hits = 0;
     cells.forEach((cell, i) => {
-        const norm = cell.trim().toLowerCase();
+        const norm = normalizeHeaderCell(cell);
+        if (!norm) return;
         for (const [field, aliases] of Object.entries(IMPORT_HEADER_ALIASES)) {
             if (!(field in map) && aliases.includes(norm)) { map[field] = i; hits++; break; }
         }
     });
-    return (hits >= 2 && ('company' in map || 'position' in map)) ? map : null;
+    return { map, hits };
 }
 
-// Parses pasted text into { entries, skipped, headerDetected }.
+// Parses CSV/TSV text into { entries, skipped, headerDetected }.
 function parseImport(text) {
     const result = { entries: [], skipped: 0, headerDetected: false };
     if (!text.trim()) return result;
@@ -529,28 +536,46 @@ function parseImport(text) {
     const rows = parseDelimited(text, detectDelimiter(text));
     if (rows.length === 0) return result;
 
-    const headerMap = detectHeaderMap(rows[0]);
-    const dataRows = headerMap ? rows.slice(1) : rows;
+    // Spreadsheet exports often have title/blank rows and leading empty columns before
+    // the real header, so scan the first several rows for the best header match rather
+    // than assuming row 0. Column indices from the matched header also absorb any
+    // leading empty columns, since data rows share the same layout.
+    let headerMap = null, headerIdx = -1, bestHits = 1; // need >= 2 matches to qualify
+    const scanLimit = Math.min(rows.length, 15);
+    for (let i = 0; i < scanLimit; i++) {
+        const { map, hits } = headerMapFor(rows[i]);
+        if (hits > bestHits && ('company' in map || 'position' in map)) {
+            bestHits = hits; headerMap = map; headerIdx = i;
+        }
+    }
+
+    const dataRows = headerMap ? rows.slice(headerIdx + 1) : rows;
     result.headerDetected = !!headerMap;
 
-    for (const cells of dataRows) {
-        const get = field => {
-            const idx = headerMap ? headerMap[field] : IMPORT_POSITIONAL.indexOf(field);
-            return (idx != null && idx >= 0 && idx < cells.length) ? cells[idx].trim() : '';
-        };
+    const FIELDS = ['position', 'company', 'location', 'pay', 'date_applied', 'status', 'notes'];
 
-        const position = get('position');
-        const company  = get('company');
-        if (!position || !company) { result.skipped++; continue; }
+    for (const cells of dataRows) {
+        const vals = {};
+        for (const f of FIELDS) {
+            const idx = headerMap ? headerMap[f] : IMPORT_POSITIONAL.indexOf(f);
+            vals[f] = (idx != null && idx >= 0 && idx < cells.length) ? cells[idx].trim() : '';
+        }
+
+        if (!vals.position || !vals.company) {
+            // Only flag rows that had some real content in a mapped column; blank or
+            // purely structural spreadsheet rows (empty cells, stray counts) are ignored.
+            if (FIELDS.some(f => vals[f] !== '')) result.skipped++;
+            continue;
+        }
 
         const entry = {
-            position,
-            company,
-            location:     get('location'),
-            pay:          get('pay'),
-            date_applied: normalizeImportDate(get('date_applied')),
-            status:       normalizeImportStatus(get('status')),
-            notes:        get('notes'),
+            position:     vals.position,
+            company:      vals.company,
+            location:     vals.location,
+            pay:          vals.pay,
+            date_applied: normalizeImportDate(vals.date_applied),
+            status:       normalizeImportStatus(vals.status),
+            notes:        vals.notes,
         };
         applyInterviewMilestone(entry);
         result.entries.push(entry);
@@ -558,8 +583,11 @@ function parseImport(text) {
     return result;
 }
 
+// Holds the text of the uploaded file (import is file-only — no paste box).
+let importFileText = '';
+
 function openImportModal() {
-    document.getElementById('import_text').value = '';
+    importFileText = '';
     document.getElementById('import_file').value = '';
     document.getElementById('import_preview').textContent = '';
     document.getElementById('import_confirm').disabled = true;
@@ -572,7 +600,7 @@ function closeImportModal() {
 
 // Live preview: count of importable rows + a small sample.
 function renderImportPreview() {
-    const text = document.getElementById('import_text').value;
+    const text = importFileText;
     const preview = document.getElementById('import_preview');
     const confirmBtn = document.getElementById('import_confirm');
 
@@ -600,7 +628,7 @@ function renderImportPreview() {
 }
 
 async function doImport() {
-    const parsed = parseImport(document.getElementById('import_text').value);
+    const parsed = parseImport(importFileText);
     if (parsed.entries.length === 0) return;
 
     const confirmBtn = document.getElementById('import_confirm');
@@ -652,16 +680,19 @@ document.getElementById('import_cancel').addEventListener('click', closeImportMo
 document.getElementById('import_overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('import_overlay')) closeImportModal();
 });
-document.getElementById('import_text').addEventListener('input', renderImportPreview);
 document.getElementById('import_confirm').addEventListener('click', doImport);
 
-// File picker loads the file's text into the textarea, then previews it.
+// File picker loads the file's text, then previews it.
 document.getElementById('import_file').addEventListener('change', e => {
     const file = e.target.files && e.target.files[0];
-    if (!file) return;
+    if (!file) {
+        importFileText = '';
+        renderImportPreview();
+        return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
-        document.getElementById('import_text').value = String(reader.result || '');
+        importFileText = String(reader.result || '');
         renderImportPreview();
     };
     reader.readAsText(file);

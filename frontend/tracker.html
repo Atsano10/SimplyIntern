@@ -154,13 +154,11 @@
         </div>
         <div class="modal_body">
           <p class="import_hint">
-            Paste rows from a spreadsheet (copied straight from Google Sheets/Excel) or CSV.
-            Include a header row if you can — e.g. <code>Position, Company, Location, Pay, Date, Status, Notes</code>.
-            With a header, column order doesn't matter. <strong>Position</strong> and <strong>Company</strong> are required; everything else is optional.
+            Upload a CSV from your spreadsheet (in Google Sheets: <code>File → Download → Comma-separated values (.csv)</code>).
+            Your sheet just needs a header row naming the columns somewhere near the top — e.g. a <code>Position</code> and a <code>Company</code> column.
+            Column order, extra columns, and blank spacer rows are all fine. <strong>Position</strong> and <strong>Company</strong> are required.
           </p>
           <input type="file" id="import_file" accept=".csv,.tsv,.txt" class="import_file" />
-          <textarea id="import_text" rows="9" class="import_textarea"
-            placeholder="Position, Company, Location, Pay, Date, Status, Notes&#10;Software Engineering Intern, Google, Remote, , 2026-01-15, Applied, referral from Sam&#10;Backend Intern, Stripe, NYC, $45/hr, 2026-01-20, 1st Round Interview,"></textarea>
           <div class="import_preview" id="import_preview"></div>
         </div>
         <div class="modal_footer">
