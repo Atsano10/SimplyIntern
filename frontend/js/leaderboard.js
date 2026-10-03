@@ -1,4 +1,9 @@
 async function refreshAll() {
+    const cycleEl = document.getElementById('lb_cycle');
+    if (cycleEl) cycleEl.textContent = CURRENT_CYCLE;
+    // Make sure the signed-in user has a profile before building the board, so a
+    // newly-created profile appears right away instead of after a manual refresh.
+    if (typeof ensureProfile === 'function') await ensureProfile();
     await loadLeaderboard();
     await loadYourStanding();
 }
@@ -106,7 +111,8 @@ async function loadYourStanding() {
         const { data: apps } = await client
             .from('applications')
             .select('status')
-            .eq('user_id', user.id);
+            .eq('user_id', user.id)
+            .eq('cycle', CURRENT_CYCLE);   // leaderboard counts only the current cycle
 
         const rejected = (apps || []).filter(a => a.status === 'Rejected').length;
         const pending  = (apps || []).filter(a => ['Pending', 'Applied', 'Interview'].includes(a.status)).length;

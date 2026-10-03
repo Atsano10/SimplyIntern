@@ -22,6 +22,17 @@
     </div>
 
     <div class="tracker_page">
+      <div class="cycle_bar">
+        <div class="cycle_left">
+          <label class="cycle_label" for="folder_select">Folder</label>
+          <select id="folder_select" class="cycle_select"></select>
+        </div>
+        <div class="cycle_actions">
+          <button class="cycle_btn" id="new_folder_btn">+ New folder</button>
+          <button class="cycle_btn danger" id="delete_folder_btn">Permanently delete</button>
+        </div>
+      </div>
+
       <div class="stats_row">
         <div class="stat_card">
           <div class="stat_number" id="stat_total">0</div>
@@ -121,7 +132,10 @@
               <label>Date Applied</label>
               <input type="date" id="m_date" />
             </div>
-            <div class="form_group"></div>
+            <div class="form_group">
+              <label>Folder</label>
+              <select id="m_folder"></select>
+            </div>
           </div>
           <div class="form_group">
             <label>Status</label>

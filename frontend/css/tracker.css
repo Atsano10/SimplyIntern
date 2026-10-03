@@ -7,6 +7,70 @@ body {
     min-height: 100vh;
 }
 
+/* ── CYCLE / FOLDER BAR ── */
+.cycle_bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 24px 48px 0;
+    flex-wrap: wrap;
+}
+
+.cycle_left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cycle_label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.cycle_select {
+    padding: 8px 12px;
+    border: 1.5px solid #d0b0b5;
+    border-radius: 8px;
+    background: #FFFFFA;
+    color: #080705;
+    font-family: 'Saira', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.cycle_select:hover,
+.cycle_select:focus { border-color: #702632; }
+
+.cycle_actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.cycle_btn {
+    padding: 8px 16px;
+    background: none;
+    color: #702632;
+    border: 1.5px solid #702632;
+    border-radius: 8px;
+    font-family: 'Saira', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.cycle_btn:hover { background: #702632; color: #FFFFFA; }
+.cycle_btn.danger { color: #a3283a; border-color: #dba1a8; }
+.cycle_btn.danger:hover { background: #a3283a; color: #FFFFFA; border-color: #a3283a; }
+
 /* ── STATS ROW ── */
 .stats_row {
     display: flex;
@@ -546,6 +610,15 @@ body.dark .stat_card {
 body.dark .stat_number { color: #f0e8ea; }
 body.dark .stat_label { color: #9a8284; }
 
+body.dark .cycle_label { color: #9a8284; }
+body.dark .cycle_select { background: #241819; color: #f0e8ea; border-color: #4a3035; }
+body.dark .cycle_select:hover,
+body.dark .cycle_select:focus { border-color: #eeb9c2; }
+body.dark .cycle_btn { color: #eeb9c2; border-color: #eeb9c2; }
+body.dark .cycle_btn:hover { background: #702632; color: #FFFFFA; border-color: #702632; }
+body.dark .cycle_btn.danger { color: #f0a0ab; border-color: #7a3a42; }
+body.dark .cycle_btn.danger:hover { background: #a3283a; color: #FFFFFA; border-color: #a3283a; }
+
 body.dark .insights_panel {
     background: #2c2022;
     border-color: #4a3035;
@@ -636,6 +709,10 @@ body.dark .import_preview { color: #6fcf97; }
 
     .insights_panel {
         margin: 16px 16px 0;
+    }
+
+    .cycle_bar {
+        padding: 16px 16px 0;
     }
 
     .funnel_label {

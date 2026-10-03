@@ -1,5 +1,127 @@
 let applications = [];
-let editingId = null; // Supabase UUID or localStorage index
+let editingApp = null; // the application object being edited, or null when adding
+
+// ── FOLDERS / CYCLES ──────────────────────────────────────────────────────────
+const ALL_FOLDERS = '__all__';                 // sentinel for the "All folders" view
+let folders = [];                              // the user's CUSTOM folder names
+let activeFolder = CURRENT_CYCLE;              // the folder currently being viewed
+
+// Predefined cycles first, then any custom folders (deduped, order-preserving).
+function allFolderNames() {
+    const custom = folders.filter(f => !PREDEFINED_CYCLES.includes(f));
+    return [...PREDEFINED_CYCLES, ...custom];
+}
+
+// Applications in the active folder (or all of them when "All folders" is selected).
+function getVisibleApps() {
+    if (activeFolder === ALL_FOLDERS) return applications;
+    return applications.filter(a => (a.cycle || CURRENT_CYCLE) === activeFolder);
+}
+
+// Loads the user's custom folders (DB when signed in, else localStorage mirror).
+async function loadFolders() {
+    let names = [];
+    try {
+        const { data: { user } } = await client.auth.getUser();
+        if (user) {
+            const { data } = await client
+                .from('folders')
+                .select('name')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: true });
+            if (data) names = data.map(f => f.name);
+        }
+    } catch (_) {}
+
+    if (names.length > 0) {
+        localStorage.setItem('si_folders', JSON.stringify(names));
+    } else {
+        names = JSON.parse(localStorage.getItem('si_folders') || '[]');
+    }
+    folders = names;
+}
+
+// (Re)builds the folder dropdown and the modal's folder picker.
+function populateFolderSelects() {
+    const names = allFolderNames();
+
+    // Guard: if the remembered folder no longer exists, fall back to the current cycle.
+    if (activeFolder !== ALL_FOLDERS && !names.includes(activeFolder)) {
+        activeFolder = CURRENT_CYCLE;
+        localStorage.setItem('si_active_folder', activeFolder);
+    }
+
+    const sel = document.getElementById('folder_select');
+    sel.innerHTML = `<option value="${ALL_FOLDERS}">All folders</option>`
+        + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    sel.value = activeFolder;
+
+    const msel = document.getElementById('m_folder');
+    if (msel) msel.innerHTML = names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+}
+
+// Creates a new custom folder and switches to it.
+async function createFolder() {
+    const name = await showPrompt({
+        title: 'New folder',
+        message: 'Name this folder (e.g. a recruitment cycle):',
+        placeholder: 'Off-Season 2026',
+        confirmText: 'Create',
+    });
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    if (allFolderNames().includes(trimmed) || trimmed === ALL_FOLDERS) {
+        await showAlert('A folder with that name already exists.', 'New folder');
+        return;
+    }
+
+    folders.push(trimmed);
+    localStorage.setItem('si_folders', JSON.stringify(folders));
+    try {
+        const { data: { user } } = await client.auth.getUser();
+        if (user) await client.from('folders').insert({ user_id: user.id, name: trimmed });
+    } catch (_) {}
+
+    activeFolder = trimmed;
+    localStorage.setItem('si_active_folder', activeFolder);
+    populateFolderSelects();
+    renderTable();
+}
+
+// Permanently deletes every application in the active folder (or all folders).
+async function deleteFolderApps() {
+    const victims = getVisibleApps();
+    const scope = activeFolder === ALL_FOLDERS ? 'ALL folders' : `"${activeFolder}"`;
+
+    if (victims.length === 0) {
+        await showAlert(`No applications to delete in ${scope}.`, 'Permanently delete');
+        return;
+    }
+
+    const ok = await showConfirm(
+        `Permanently delete all ${victims.length} application${victims.length === 1 ? '' : 's'} in ${scope}? This cannot be undone.`,
+        'Permanently delete'
+    );
+    if (!ok) return;
+
+    const ids = victims.filter(a => a.id).map(a => a.id);
+    try {
+        const { data: { user } } = await client.auth.getUser();
+        if (user && ids.length) await client.from('applications').delete().in('id', ids);
+    } catch (_) {}
+
+    const victimSet = new Set(victims);
+    applications = applications.filter(a => !victimSet.has(a));
+    localStorage.setItem('si_applications', JSON.stringify(applications));
+    renderTable();
+}
+
+// The cycle an application should get when created from each entry point.
+function cycleForNewApp() {
+    return activeFolder === ALL_FOLDERS ? CURRENT_CYCLE : activeFolder;
+}
 
 // Interview-stage statuses (includes the legacy 'Interview').
 const INTERVIEW_STATUSES = ['1st Round Interview', '2nd Round Interview', 'Interview'];
@@ -41,6 +163,7 @@ async function loadApplications() {
                         status: row.status,
                         notes: row.notes || '',
                         reached_interview: row.reached_interview ?? false,
+                        cycle: row.cycle || CURRENT_CYCLE,
                     }));
                     localStorage.setItem('si_applications', JSON.stringify(applications));
                     renderTable();
@@ -92,6 +215,7 @@ async function syncLocalApps(user) {
                 status: app.status,
                 notes: app.notes,
                 reached_interview: app.reached_interview ?? false,
+                cycle: app.cycle || CURRENT_CYCLE,
             })
             .select()
             .single();
@@ -151,6 +275,7 @@ async function saveApplication(entry) {
                         status: entry.status,
                         notes: entry.notes,
                         reached_interview: entry.reached_interview ?? false,
+                        cycle: entry.cycle || CURRENT_CYCLE,
                     })
                     .eq('id', entry.id);
                 if (error) console.error('Update failed:', error.message);
@@ -168,6 +293,7 @@ async function saveApplication(entry) {
                         status: entry.status,
                         notes: entry.notes,
                         reached_interview: entry.reached_interview ?? false,
+                        cycle: entry.cycle || CURRENT_CYCLE,
                     })
                     .select()
                     .single();
@@ -188,8 +314,8 @@ async function saveApplication(entry) {
 
 // ── DELETE ──────────────────────────────────────────────────────────────────
 
-async function deleteApp(index) {
-    const app = applications[index];
+async function deleteApp(app) {
+    if (!app) return;
 
     if (app.id) {
         try {
@@ -197,15 +323,14 @@ async function deleteApp(index) {
         } catch (_) {}
     }
 
-    applications.splice(index, 1);
+    applications = applications.filter(a => a !== app);
     localStorage.setItem('si_applications', JSON.stringify(applications));
     renderTable();
 }
 
 // Resets a single application back to 'Pending', which clears its interview/offer
 // contribution to the funnel (stats read current status, so this fully restarts it).
-async function resetApp(index) {
-    const app = applications[index];
+async function resetApp(app) {
     if (!app || app.status === 'Pending') return;
 
     const ok = await showConfirm(
@@ -224,13 +349,15 @@ async function resetApp(index) {
 
 function renderTable() {
     const tbody = document.getElementById('app_tbody');
+    const visible = getVisibleApps();
 
-    if (applications.length === 0) {
+    if (visible.length === 0) {
+        const where = activeFolder === ALL_FOLDERS ? 'any folder' : `“${esc(activeFolder)}”`;
         tbody.innerHTML = `
-            <tr><td colspan="7">
+            <tr><td colspan="8">
                 <div class="table_empty">
-                    <p>No applications yet.</p>
-                    <p>Click "Add Application" or use "Mark Applied" on the Search page.</p>
+                    <p>No applications in ${where} yet.</p>
+                    <p>Click "Add Application", use "Mark Applied" on Search, or Import a list.</p>
                 </div>
             </td></tr>`;
         updateStats();
@@ -247,7 +374,7 @@ function renderTable() {
         'Rejected':            'Rejected',
     };
 
-    tbody.innerHTML = applications.map((app, i) => {
+    tbody.innerHTML = visible.map((app, i) => {
         const cls = STATUS_CLASS[app.status] || 'Pending';
         return `
         <tr>
@@ -276,13 +403,14 @@ function formatDate(dateStr) {
 }
 
 function updateStats() {
-    document.getElementById('stat_total').textContent = applications.length;
+    const visible = getVisibleApps();
+    document.getElementById('stat_total').textContent = visible.length;
     document.getElementById('stat_pending').textContent =
-        applications.filter(a => ['Pending', 'Applied', 'Interview', '1st Round Interview', '2nd Round Interview'].includes(a.status)).length;
+        visible.filter(a => ['Pending', 'Applied', 'Interview', '1st Round Interview', '2nd Round Interview'].includes(a.status)).length;
     document.getElementById('stat_rejected').textContent =
-        applications.filter(a => a.status === 'Rejected').length;
+        visible.filter(a => a.status === 'Rejected').length;
     document.getElementById('stat_accepted').textContent =
-        applications.filter(a => a.status === 'Accepted').length;
+        visible.filter(a => a.status === 'Accepted').length;
 
     renderInsights();
 }
@@ -293,7 +421,8 @@ function updateStats() {
 // (so a rescinded/rejected offer drops off). All values are derived, so the markup
 // is built from numbers/static labels only (no user input to escape).
 function renderInsights() {
-    const total = applications.length;
+    const visible = getVisibleApps();
+    const total = visible.length;
 
     const sub = document.getElementById('insights_sub');
     const funnelEl = document.getElementById('funnel');
@@ -306,10 +435,10 @@ function renderInsights() {
         return;
     }
 
-    const interviewed = applications.filter(a => a.reached_interview).length;
-    const offers      = applications.filter(a => a.status === 'Accepted').length;
+    const interviewed = visible.filter(a => a.reached_interview).length;
+    const offers      = visible.filter(a => a.status === 'Accepted').length;
     // Heard back = ever interviewed, currently holding an offer, or rejected.
-    const responded   = applications.filter(a =>
+    const responded   = visible.filter(a =>
         a.reached_interview || a.status === 'Accepted' || a.status === 'Rejected').length;
 
     sub.textContent = `across ${total} application${total === 1 ? '' : 's'}`;
@@ -352,12 +481,12 @@ function renderInsights() {
 
 // ── MODAL ───────────────────────────────────────────────────────────────────
 
-function openModal(index = null) {
-    editingId = index;
-    document.getElementById('modal_title').textContent = index !== null ? 'Edit Application' : 'Add Application';
+function openModal(app = null) {
+    editingApp = app;
+    document.getElementById('modal_title').textContent = app ? 'Edit Application' : 'Add Application';
+    populateFolderSelects(); // keep the folder picker fresh
 
-    if (index !== null) {
-        const app = applications[index];
+    if (app) {
         document.getElementById('m_position').value = app.position;
         document.getElementById('m_company').value = app.company;
         document.getElementById('m_location').value = app.location || '';
@@ -365,6 +494,7 @@ function openModal(index = null) {
         document.getElementById('m_date').value = app.date_applied || '';
         document.getElementById('m_status').value = app.status;
         document.getElementById('m_notes').value = app.notes || '';
+        document.getElementById('m_folder').value = app.cycle || CURRENT_CYCLE;
     } else {
         document.getElementById('m_position').value = '';
         document.getElementById('m_company').value = '';
@@ -373,6 +503,7 @@ function openModal(index = null) {
         document.getElementById('m_date').value = '';
         document.getElementById('m_status').value = 'Pending';
         document.getElementById('m_notes').value = '';
+        document.getElementById('m_folder').value = cycleForNewApp();
     }
 
     document.getElementById('modal_overlay').style.display = 'flex';
@@ -380,7 +511,7 @@ function openModal(index = null) {
 
 function closeModal() {
     document.getElementById('modal_overlay').style.display = 'none';
-    editingId = null;
+    editingApp = null;
 }
 
 // Edit/Delete are bound via delegation (rows are re-rendered, so we listen on
@@ -389,10 +520,20 @@ document.getElementById('app_tbody').addEventListener('click', e => {
     const editBtn  = e.target.closest('.row_edit');
     const delBtn   = e.target.closest('.row_delete');
     const resetBtn = e.target.closest('.row_reset');
-    if (editBtn) openModal(Number(editBtn.dataset.index));
-    else if (delBtn) deleteApp(Number(delBtn.dataset.index));
-    else if (resetBtn) resetApp(Number(resetBtn.dataset.index));
+    const visible = getVisibleApps();           // data-index refers to this filtered list
+    if (editBtn) openModal(visible[Number(editBtn.dataset.index)]);
+    else if (delBtn) deleteApp(visible[Number(delBtn.dataset.index)]);
+    else if (resetBtn) resetApp(visible[Number(resetBtn.dataset.index)]);
 });
+
+// Folder controls.
+document.getElementById('folder_select').addEventListener('change', e => {
+    activeFolder = e.target.value;
+    localStorage.setItem('si_active_folder', activeFolder);
+    renderTable();
+});
+document.getElementById('new_folder_btn').addEventListener('click', createFolder);
+document.getElementById('delete_folder_btn').addEventListener('click', deleteFolderApps);
 
 document.getElementById('add_btn').addEventListener('click', () => openModal());
 document.getElementById('modal_close').addEventListener('click', closeModal);
@@ -410,7 +551,7 @@ document.getElementById('modal_save').addEventListener('click', async () => {
         return;
     }
 
-    const entry = {
+    const fields = {
         position,
         company,
         location: document.getElementById('m_location').value.trim(),
@@ -418,21 +559,27 @@ document.getElementById('modal_save').addEventListener('click', async () => {
         date_applied: document.getElementById('m_date').value,
         status: document.getElementById('m_status').value,
         notes: document.getElementById('m_notes').value.trim(),
+        cycle: document.getElementById('m_folder').value,
     };
 
-    // Carry the interview milestone forward from the existing row, then let the new
-    // status update it (reaching an interview sets it; Pending clears it).
-    entry.reached_interview = editingId !== null ? (applications[editingId].reached_interview || false) : false;
-    applyInterviewMilestone(entry);
-
-    if (editingId !== null) {
-        entry.id = applications[editingId].id;
-        applications[editingId] = entry;
+    let entry;
+    if (editingApp) {
+        // Mutate in place so the id and array position are preserved.
+        Object.assign(editingApp, fields);
+        entry = editingApp;
     } else {
+        entry = { ...fields, reached_interview: false };
         applications.push(entry);
     }
 
+    // The new status updates the interview milestone (reaching an interview sets it;
+    // Pending clears it); a later accept/reject leaves it intact.
+    applyInterviewMilestone(entry);
+
     await saveApplication(entry);
+
+    // If the app was moved into a different folder than the one being viewed, keep the
+    // current view selected (it'll simply drop out of this folder's list).
     renderTable();
     closeModal();
 });
@@ -614,7 +761,7 @@ function renderImportPreview() {
     const n = parsed.entries.length;
     confirmBtn.disabled = n === 0;
 
-    let msg = `${n} application${n === 1 ? '' : 's'} ready to import`;
+    let msg = `${n} application${n === 1 ? '' : 's'} ready to import into “${cycleForNewApp()}”`;
     if (parsed.headerDetected) msg += ' · header detected';
     if (parsed.skipped) msg += ` · ${parsed.skipped} skipped (missing position/company)`;
 
@@ -630,6 +777,10 @@ function renderImportPreview() {
 async function doImport() {
     const parsed = parseImport(importFileText);
     if (parsed.entries.length === 0) return;
+
+    // Imported rows land in the folder currently being viewed.
+    const importCycle = cycleForNewApp();
+    parsed.entries.forEach(e => { e.cycle = importCycle; });
 
     const confirmBtn = document.getElementById('import_confirm');
     confirmBtn.disabled = true;
@@ -648,6 +799,7 @@ async function doImport() {
                 status:            e.status,
                 notes:             e.notes,
                 reached_interview: e.reached_interview ?? false,
+                cycle:             e.cycle,
             }));
             const { error } = await client.from('applications').insert(payload);
             if (error) showSyncBanner(error.message);
@@ -700,9 +852,16 @@ document.getElementById('import_file').addEventListener('change', e => {
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 
-loadApplications();
+async function initTracker() {
+    activeFolder = localStorage.getItem('si_active_folder') || CURRENT_CYCLE;
+    await loadFolders();
+    populateFolderSelects();
+    await loadApplications();
+}
+
+initTracker();
 
 // Re-sync from Supabase if browser restores this page from bfcache
 window.addEventListener('pageshow', (e) => {
-    if (e.persisted) loadApplications();
+    if (e.persisted) initTracker();
 });

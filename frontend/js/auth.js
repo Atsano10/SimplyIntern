@@ -188,45 +188,66 @@ async function checkSession() {
             .eq('id', session.user.id)
             .maybeSingle()
 
-        if (profile) {
-            window.location.href = 'search.html'
-        } else {
-            // No profile yet — either a Google OAuth user or someone who just confirmed
-            // their email. Prefer the username they picked at signup (carried in
-            // user_metadata, or stashed locally), falling back to the email prefix.
-            const desired = session.user.user_metadata?.username
-                || localStorage.getItem('si_pending_username')
-                || session.user.email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_')
+        if (!profile) {
+            // No profile yet — Google OAuth user or someone who just confirmed email.
+            await createProfileFor(session)
+        }
+        window.location.href = 'search.html'
+    }
+}
 
-            let username = desired
-            let suffix = 1
+// Creates the profile row for a session's user, choosing the username they picked at
+// signup (user_metadata or local stash) and falling back to the email prefix, deduped
+// against existing usernames. Returns true if a profile exists afterward.
+async function createProfileFor(session) {
+    const desired = session.user.user_metadata?.username
+        || localStorage.getItem('si_pending_username')
+        || session.user.email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_')
 
-            while (true) {
-                // Safe availability check (profiles is no longer publicly readable)
-                const { data: taken } = await client.rpc('username_exists', { p_username: username })
-                if (!taken) break
-                username = desired + suffix
-                suffix++
-            }
+    let username = desired
+    let suffix = 1
+    while (true) {
+        const { data: taken } = await client.rpc('username_exists', { p_username: username })
+        if (!taken) break
+        username = desired + suffix
+        suffix++
+    }
 
-            const { error: insertError } = await client.from('profiles').insert({
-                id: session.user.id,
-                username: username,
-                email: session.user.email
-            })
+    const { error: insertError } = await client.from('profiles').insert({
+        id: session.user.id,
+        username: username,
+        email: session.user.email
+    })
 
-            if (insertError) {
-                console.error('Profile creation failed:', insertError.message)
-                return
-            }
-
-            // Signup is now fully complete — clear the stashed values.
-            localStorage.removeItem('si_pending_username')
-            localStorage.removeItem('si_pending_email')
-
-            window.location.href = 'search.html'
+    if (insertError) {
+        // 23505 = someone/another tab already created it — that's fine.
+        if (insertError.code !== '23505') {
+            console.error('Profile creation failed:', insertError.message)
+            return false
         }
     }
+
+    localStorage.removeItem('si_pending_username')
+    localStorage.removeItem('si_pending_email')
+    return true
+}
+
+// Ensures the signed-in user has a profile row WITHOUT redirecting. Runs on the app
+// pages (which skip checkSession), so users who reached them directly — e.g. straight
+// to the Tracker after confirming email — still get a profile and therefore show up on
+// the leaderboard. Without this, such accounts have applications but no profile and are
+// invisible to the (profile-driven) leaderboard.
+async function ensureProfile() {
+    try {
+        const { data: { session } } = await client.auth.getSession()
+        if (!session) return
+        const { data: profile } = await client
+            .from('profiles')
+            .select('id')
+            .eq('id', session.user.id)
+            .maybeSingle()
+        if (!profile) await createProfileFor(session)
+    } catch (_) {}
 }
 
 if (!window.location.pathname.includes('search') &&
@@ -236,6 +257,11 @@ if (!window.location.pathname.includes('search') &&
     !window.location.pathname.includes('saved') &&
     !window.location.pathname.includes('leaderboard')) {
     checkSession()
+} else if (['search', 'tracker', 'settings', 'saved', 'leaderboard']
+        .some(p => window.location.pathname.includes(p))) {
+    // App pages skip checkSession (no redirect), so make sure a profile exists here —
+    // otherwise an account can accumulate applications but never appear on the leaderboard.
+    ensureProfile()
 }
 
 async function logOut() {

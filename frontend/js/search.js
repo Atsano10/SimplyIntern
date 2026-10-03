@@ -528,6 +528,7 @@ async function markApplied(btn) {
     pay:       btn.dataset.pay || 'Not listed',
     status:    'Pending',
     notes:     '',
+    cycle:     CURRENT_CYCLE,
   };
 
   try {
@@ -542,6 +543,7 @@ async function markApplied(btn) {
         pay:        entry.pay,
         status:     entry.status,
         notes:      entry.notes,
+        cycle:      entry.cycle,
       }).select().single();
 
       if (!error && data) {

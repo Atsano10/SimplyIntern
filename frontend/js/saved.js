@@ -121,6 +121,7 @@ async function applyFromSaved(job, btn) {
     pay:       job.pay || 'Not listed',
     status:    'Pending',
     notes:     '',
+    cycle:     CURRENT_CYCLE,
   };
 
   try {
@@ -135,6 +136,7 @@ async function applyFromSaved(job, btn) {
         pay:        entry.pay,
         status:     entry.status,
         notes:      entry.notes,
+        cycle:      entry.cycle,
       }).select().single();
       if (data) entry.id = data.id;
     }
