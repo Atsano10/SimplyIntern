@@ -272,6 +272,58 @@ async function ensureProfile() {
     } catch (_) {}
 }
 
+// Kicks the user back to the login page with all per-account caches wiped. scope:'local'
+// clears the stored session without calling the server, which matters when the account
+// was deleted — a global sign-out would just fail against a user that no longer exists.
+async function forceLogout() {
+    localStorage.removeItem('si_applications')
+    localStorage.removeItem('si_saved')
+    try { await client.auth.signOut({ scope: 'local' }) } catch (_) {}
+    window.location.replace('index.html')
+}
+
+// Server-side check that the session's account still exists. getSession() only reads
+// the token from localStorage, and that token stays valid for up to an hour after the
+// account is deleted — so a deleted user kept "working" on the cached data. getUser()
+// asks Supabase Auth directly and errors once the user is gone. Returns true if the
+// user may stay on the page.
+async function verifyAccount() {
+    const { data, error } = await client.auth.getUser()
+    if (data?.user) return true
+    // Network hiccup / Supabase down: don't log a real user out. The DB itself still
+    // rejects a deleted user's requests (FK cascade, migration 017).
+    if (error?.name === 'AuthRetryableFetchError') return true
+    // No session, user deleted (403 user_not_found), or token revoked/invalid.
+    await forceLogout()
+    return false
+}
+
+// App pages are hidden until the account is verified so a deleted or logged-out user
+// never sees a flash of cached tracker/saved data before the redirect.
+async function requireAuth() {
+    document.documentElement.style.visibility = 'hidden'
+    const ok = await verifyAccount()
+    if (!ok) return
+    document.documentElement.style.visibility = ''
+
+    // Re-check when the tab regains focus and every few minutes, so a user deleted
+    // while the page is open gets logged out instead of carrying on.
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') verifyAccount()
+    })
+    setInterval(verifyAccount, 5 * 60 * 1000)
+
+    // Supabase fires SIGNED_OUT when a token refresh fails (e.g. the account was
+    // deleted) or the user logs out in another tab.
+    client.auth.onAuthStateChange(event => {
+        if (event === 'SIGNED_OUT') forceLogout()
+    })
+
+    // Make sure a profile exists here — otherwise an account can accumulate
+    // applications but never appear on the leaderboard.
+    ensureProfile()
+}
+
 if (!window.location.pathname.includes('search') &&
     !window.location.pathname.includes('tracker') &&
     !window.location.pathname.includes('signup') &&
@@ -281,9 +333,7 @@ if (!window.location.pathname.includes('search') &&
     checkSession()
 } else if (['search', 'tracker', 'settings', 'saved', 'leaderboard']
         .some(p => window.location.pathname.includes(p))) {
-    // App pages skip checkSession (no redirect), so make sure a profile exists here —
-    // otherwise an account can accumulate applications but never appear on the leaderboard.
-    ensureProfile()
+    requireAuth()
 }
 
 async function logOut() {
