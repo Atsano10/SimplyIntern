@@ -332,7 +332,6 @@ const GITHUB_REPOS = [
 
 // Parses the HTML <table> format that SimplifyJobs switched to.
 // Rows with "↳" in the company column are sub-roles — I carry the last company name forward.
-// deno-lint-ignore no-explicit-any
 function parseHtmlTable(content: string): Listing[] {
   const jobs: Listing[] = [];
   let lastCompany = '';

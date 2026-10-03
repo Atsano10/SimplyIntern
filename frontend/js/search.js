@@ -430,7 +430,6 @@ function timeAgo(dateStr) {
   if (days < 60)  return 'Posted 1 month ago';
   return `Posted ${Math.floor(days / 30)} months ago`;
 }
-// esc() now lives in js/util.js (shared across pages)
 
 // ── Saved jobs ───────────────────────────────────────────────────────────────
 // A bookmarked shortlist, separate from "applied". Mirrors the applied-state

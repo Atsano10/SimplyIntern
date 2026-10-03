@@ -329,25 +329,6 @@ body {
     color: #888;
 }
 
-.import_textarea {
-    width: 100%;
-    border: 1.5px solid #d0b0b5;
-    border-radius: 8px;
-    padding: 10px 12px;
-    font-family: 'Saira', monospace;
-    font-size: 13px;
-    color: #080705;
-    background: #FFFFFA;
-    outline: none;
-    resize: vertical;
-    transition: border-color 0.2s;
-    box-sizing: border-box;
-}
-
-.import_textarea:focus {
-    border-color: #702632;
-}
-
 .import_preview {
     font-size: 13px;
     color: #2a7a4f;
@@ -688,8 +669,6 @@ body.dark .import_btn:hover { background: #702632; color: #FFFFFA; border-color:
 body.dark .import_hint { color: #9a8284; }
 body.dark .import_hint code { background: #3a2a2c; color: #f0e8ea; }
 body.dark .import_file { color: #9a8284; }
-body.dark .import_textarea { background: #241819; color: #f0e8ea; border-color: #4a3035; }
-body.dark .import_textarea:focus { border-color: #eeb9c2; }
 body.dark .import_preview { color: #6fcf97; }
 
 /* ── MOBILE ── */

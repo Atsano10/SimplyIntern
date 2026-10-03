@@ -40,37 +40,6 @@ body {
     margin-bottom: 20px;
 }
 
-.lb_legend {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.legend_item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    color: #888;
-}
-
-.legend_dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-}
-
-.legend_dot.rejected { background: #702632; }
-.legend_dot.pending  { background: #c48a00; }
-
-.legend_sep { color: #444; }
-
-.legend_note {
-    font-size: 13px;
-    color: #666;
-}
-
 /* ── BODY ── */
 .lb_body {
     padding: 32px 48px 60px;
@@ -360,9 +329,6 @@ body.dark .podium_breakdown { color: #9a8284; }
 body.dark .podium_rank { color: #9a8284; }
 
 body.dark .lb_subtitle { color: #9a8284; }
-body.dark .legend_item { color: #9a8284; }
-body.dark .legend_sep { color: #4a3035; }
-body.dark .legend_note { color: #9a8284; }
 
 body.dark .rankings_section {
     background: #2c2022;
