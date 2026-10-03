@@ -200,36 +200,58 @@ async function checkSession() {
 // signup (user_metadata or local stash) and falling back to the email prefix, deduped
 // against existing usernames. Returns true if a profile exists afterward.
 async function createProfileFor(session) {
-    const desired = session.user.user_metadata?.username
+    const base = session.user.user_metadata?.username
         || localStorage.getItem('si_pending_username')
         || session.user.email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_')
 
-    let username = desired
-    let suffix = 1
-    while (true) {
-        const { data: taken } = await client.rpc('username_exists', { p_username: username })
-        if (!taken) break
-        username = desired + suffix
-        suffix++
-    }
+    // Try a few username variants. We RETRY on the actual insert, not just the
+    // availability check, so a race (name free at check time, taken at insert) still
+    // resolves. Each 23505 is inspected by constraint name so we never silently
+    // "succeed" on a conflict that left the user without a profile (the bug that hid
+    // the leaderboard issue for so long).
+    for (let attempt = 0; attempt < 6; attempt++) {
+        const username = attempt === 0 ? base : `${base}${attempt}`
 
-    const { error: insertError } = await client.from('profiles').insert({
-        id: session.user.id,
-        username: username,
-        email: session.user.email
-    })
+        // Best-effort pre-check so we usually land on the first attempt.
+        try {
+            const { data: taken } = await client.rpc('username_exists', { p_username: username })
+            if (taken) continue
+        } catch (_) {}
 
-    if (insertError) {
-        // 23505 = someone/another tab already created it — that's fine.
-        if (insertError.code !== '23505') {
-            console.error('Profile creation failed:', insertError.message)
+        const { error } = await client.from('profiles').insert({
+            id: session.user.id,
+            username,
+            email: session.user.email,
+        })
+
+        if (!error) {
+            localStorage.removeItem('si_pending_username')
+            localStorage.removeItem('si_pending_email')
+            return true
+        }
+
+        if (error.code === '23505') {
+            const msg = error.message || ''
+            // A profile already exists for this user id → genuinely done.
+            if (msg.includes('profiles_pkey')) {
+                localStorage.removeItem('si_pending_username')
+                localStorage.removeItem('si_pending_email')
+                return true
+            }
+            // Username clash → try the next variant.
+            if (msg.includes('profiles_username_key')) continue
+            // Email clash (e.g. an orphan profile holds this email) — unresolvable
+            // client-side. Surface it loudly instead of leaving the user profile-less.
+            console.error('Profile creation blocked (email already in use by another profile):', msg)
             return false
         }
+
+        console.error('Profile creation failed:', error.message)
+        return false
     }
 
-    localStorage.removeItem('si_pending_username')
-    localStorage.removeItem('si_pending_email')
-    return true
+    console.error('Profile creation failed: no available username after several attempts')
+    return false
 }
 
 // Ensures the signed-in user has a profile row WITHOUT redirecting. Runs on the app
