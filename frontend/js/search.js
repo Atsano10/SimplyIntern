@@ -11,13 +11,19 @@ const msState = {
   jobTypes:   new Set(),
 };
 
-// Maps each filter label (e.g. 'California') to the DB ilike patterns I'll use to query it
-const locationPatternMap = {};
+// Maps each location option value (e.g. 'us:CA') to the DB ILIKE patterns that select it.
+// Built by buildLocationIndex() in js/locations.js.
+let locationPatternMap = {};
 
-// Builds the checkbox list inside a filter panel from an array of { value, label } items
-function msInit(id, stateKey, items) {
-  const panel = document.getElementById(id + '_panel');
-  items.forEach(({ value, label }) => {
+// Display label for each option value, per filter (so the button shows "California", not "us:CA").
+const msLabels = { locations: {}, industries: {}, jobTypes: {} };
+
+// Builds the checkbox list inside a filter panel from { value, label, count? } items.
+// `container` defaults to the panel itself; the location filter passes a group element.
+function msInit(id, stateKey, items, container) {
+  const target = container || document.getElementById(id + '_panel');
+  items.forEach(({ value, label, count }) => {
+    msLabels[stateKey][value] = label;
     const lbl = document.createElement('label');
     lbl.className = 'ms_option';
     const cb = document.createElement('input');
@@ -27,8 +33,17 @@ function msInit(id, stateKey, items) {
       msState[stateKey][cb.checked ? 'add' : 'delete'](value);
       msRefresh(id, stateKey);
     });
-    lbl.append(cb, document.createTextNode(' ' + label));
-    panel.appendChild(lbl);
+    const text = document.createElement('span');
+    text.className = 'ms_option_label';
+    text.textContent = label;
+    lbl.append(cb, text);
+    if (count != null) {
+      const num = document.createElement('span');
+      num.className = 'ms_count';
+      num.textContent = count;
+      lbl.appendChild(num);
+    }
+    target.appendChild(lbl);
   });
 }
 
@@ -41,8 +56,8 @@ function msRefresh(id, stateKey) {
     lbl.textContent = btn.dataset.all;
     btn.classList.remove('ms_active');
   } else {
-    const vals = [...set];
-    lbl.textContent = vals.length <= 2 ? vals.join(', ') : `${vals.length} selected`;
+    const names = [...set].map(v => msLabels[stateKey][v] || v);
+    lbl.textContent = names.length <= 2 ? names.join(', ') : `${names.length} selected`;
     btn.classList.add('ms_active');
   }
 }
@@ -70,161 +85,90 @@ document.addEventListener('click', e => {
 
 // Location filter
 
-// Maps 2-letter US state codes to full state names for the filter dropdown
-const STATE_NAMES = {
-  AL: 'Alabama',       AK: 'Alaska',         AZ: 'Arizona',        AR: 'Arkansas',
-  CA: 'California',    CO: 'Colorado',        CT: 'Connecticut',    DE: 'Delaware',
-  FL: 'Florida',       GA: 'Georgia',         HI: 'Hawaii',         ID: 'Idaho',
-  IL: 'Illinois',      IN: 'Indiana',         IA: 'Iowa',           KS: 'Kansas',
-  KY: 'Kentucky',      LA: 'Louisiana',       ME: 'Maine',          MD: 'Maryland',
-  MA: 'Massachusetts', MI: 'Michigan',        MN: 'Minnesota',      MS: 'Mississippi',
-  MO: 'Missouri',      MT: 'Montana',         NE: 'Nebraska',       NV: 'Nevada',
-  NH: 'New Hampshire', NJ: 'New Jersey',      NM: 'New Mexico',     NY: 'New York',
-  NC: 'North Carolina',ND: 'North Dakota',    OH: 'Ohio',           OK: 'Oklahoma',
-  OR: 'Oregon',        PA: 'Pennsylvania',    RI: 'Rhode Island',   SC: 'South Carolina',
-  SD: 'South Dakota',  TN: 'Tennessee',       TX: 'Texas',          UT: 'Utah',
-  VT: 'Vermont',       VA: 'Virginia',        WA: 'Washington',     WV: 'West Virginia',
-  WI: 'Wisconsin',     WY: 'Wyoming',         DC: 'Washington DC',
-};
-const US_STATES = new Set(Object.keys(STATE_NAMES));
-
-// Pulls all unique locations from the DB, groups them into state/country buckets,
-// and populates the location dropdown. Remote always appears first.
-async function loadLocationFilter() {
-  try {
-    const { data } = await client
+// Supabase returns at most 1000 rows per request, so page through every listing's
+// location (a single .limit(2000) silently stopped at 1000 and dropped half the places).
+async function fetchAllLocations() {
+  const PAGE = 1000;
+  const all = [];
+  for (let from = 0; from < 50000; from += PAGE) {
+    const { data, error } = await client
       .from('listings')
       .select('location')
       .not('location', 'is', null)
-      .limit(2000);
-
-    const cpMap = {};
-    (data || []).forEach(row => {
-      const loc = (row.location || '').trim();
-      if (!loc) return;
-
-      // A single listing can have multiple locations joined by " / " (e.g. "New York, NY / Remote")
-      const parts = loc.split(' / ').map(p => p.trim()).filter(Boolean);
-      parts.forEach(part => {
-        if (/\bremote\b/i.test(part)) {
-          if (!cpMap['Remote']) cpMap['Remote'] = new Set();
-          cpMap['Remote'].add('%remote%');
-          return;
-        }
-
-        // US locations end with a known 2-letter state code like ", NY"
-        const stateMatch = part.match(/,\s*([A-Z]{2})\s*$/);
-        if (stateMatch && US_STATES.has(stateMatch[1])) {
-          const code      = stateMatch[1];
-          const stateName = STATE_NAMES[code];
-          // Anchor the state code to a part boundary: either the end of the whole
-          // location string ("%, NY") or right before a " / " separator in a
-          // multi-location listing ("%, NY /%"). A plain substring like "%, DE%"
-          // would wrongly match countries — ", DEnmark", ", INdia", ", COlombia" —
-          // which is why "United States" was surfacing Denmark, India, etc.
-          const patterns = [`%, ${code}`, `%, ${code} /%`];
-          if (!cpMap[stateName]) cpMap[stateName] = new Set();
-          // Every US state also rolls up under the "United States" filter option,
-          // so selecting it returns listings from every state.
-          if (!cpMap['United States']) cpMap['United States'] = new Set();
-          for (const pat of patterns) {
-            cpMap[stateName].add(pat);
-            cpMap['United States'].add(pat);
-          }
-          return;
-        }
-
-        // International - I use the last comma segment as the country name
-        const locParts = part.split(',');
-        const country = locParts.length >= 2
-          ? locParts[locParts.length - 1].trim()
-          : part;
-        if (!country) return;
-        if (!cpMap[country]) cpMap[country] = new Set();
-        // Anchor the country to the end of the string or before a " / " separator
-        // so "India" matches "Mumbai, India" but not "Indianapolis, IN".
-        cpMap[country].add(`%${country}`);
-        cpMap[country].add(`%${country} /%`);
-      });
-    });
-
-    // Some companies use abbreviations or alternate names for the same place.
-    // I merge these into canonical labels so duplicates don't appear in the filter.
-    const LOCATION_ALIASES = {
-      // United States variants
-      'USA': 'United States', 'U.S.': 'United States',
-      'United States of America': 'United States', 'U.S.A.': 'United States',
-      // United Kingdom variants
-      'UK': 'United Kingdom', 'England': 'United Kingdom',
-      'Great Britain': 'United Kingdom', 'GBR': 'United Kingdom',
-      // City abbreviations that should roll up to their state
-      'Nyc': 'New York', 'NYC': 'New York',
-      'La': 'California', 'Sf': 'California', 'SF': 'California',
-      'Seattle': 'Washington',
-      // Standalone cities that should roll up to their country
-      'Rotterdam': 'Netherlands', 'Amsterdam': 'Netherlands',
-      // Brazilian state codes (MG = Minas Gerais, SP = São Paulo, etc.)
-      'MG': 'Brazil', 'SP': 'Brazil', 'RJ': 'Brazil', 'RS': 'Brazil',
-      // 3-letter ISO country codes that sometimes slip through from Greenhouse
-      'CAN': 'Canada',    'DEU': 'Germany',   'FRA': 'France',
-      'AUS': 'Australia', 'IND': 'India',     'CHN': 'China',
-      'JPN': 'Japan',     'KOR': 'South Korea', 'SGP': 'Singapore',
-      'NLD': 'Netherlands', 'ESP': 'Spain',   'ITA': 'Italy',
-      'BRA': 'Brazil',    'MEX': 'Mexico',    'ARG': 'Argentina',
-      'COL': 'Colombia',  'CHL': 'Chile',     'ZAF': 'South Africa',
-      'NZL': 'New Zealand', 'SWE': 'Sweden',  'NOR': 'Norway',
-      'DNK': 'Denmark',   'FIN': 'Finland',   'BEL': 'Belgium',
-      'CHE': 'Switzerland', 'AUT': 'Austria', 'PRT': 'Portugal',
-      'POL': 'Poland',    'CZE': 'Czech Republic', 'TUR': 'Turkey',
-      'ISR': 'Israel',    'ARE': 'UAE',       'TWN': 'Taiwan',
-      'HKG': 'Hong Kong', 'IRE': 'Ireland',   'IRL': 'Ireland',
-    };
-    Object.entries(LOCATION_ALIASES).forEach(([alias, canonical]) => {
-      if (!cpMap[alias]) return;
-      if (!cpMap[canonical]) cpMap[canonical] = new Set();
-      for (const p of cpMap[alias]) cpMap[canonical].add(p);
-      delete cpMap[alias];
-    });
-
-    // Drop anything that's clearly not a real location (e.g. "or Paris" fragments, single chars)
-    Object.keys(cpMap).forEach(key => {
-      if (/^or\s/i.test(key) || key.length <= 1) delete cpMap[key];
-    });
-
-    Object.keys(cpMap).forEach(c => { locationPatternMap[c] = [...cpMap[c]]; });
-  } catch {
-    // If the DB query fails I fall back to a hardcoded set of common US states.
-    // Patterns are anchored the same way as the live ones: end-of-string or before " / ".
-    locationPatternMap['Remote']       = ['%remote%'];
-    locationPatternMap['New York']     = ['%, NY', '%, NY /%'];
-    locationPatternMap['California']   = ['%, CA', '%, CA /%'];
-    locationPatternMap['Illinois']     = ['%, IL', '%, IL /%'];
-    locationPatternMap['Massachusetts']= ['%, MA', '%, MA /%'];
-    locationPatternMap['Washington']   = ['%, WA', '%, WA /%'];
-    locationPatternMap['Texas']        = ['%, TX', '%, TX /%'];
+      .order('id')
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    data.forEach(r => all.push(r.location));
+    if (data.length < PAGE) break;
   }
+  return all;
+}
 
-  // Sort alphabetically, Remote always first
-  const countries = Object.keys(locationPatternMap).sort((a, b) => {
-    if (a === 'Remote') return -1;
-    if (b === 'Remote') return 1;
-    return a.localeCompare(b);
-  });
+// Builds the grouped location panel: Remote / United States, then U.S. states, then
+// international countries — each with its listing count — plus a live search box.
+async function loadLocationFilter() {
+  const panel = document.getElementById('ms_location_panel');
+  let index;
+  try {
+    index = buildLocationIndex(await fetchAllLocations());
+  } catch (err) {
+    console.error('Could not load locations:', err);
+    const msg = document.createElement('div');
+    msg.className = 'ms_empty';
+    msg.textContent = 'Couldn’t load locations. Refresh to try again.';
+    panel.appendChild(msg);
+    return;
+  }
+  locationPatternMap = index.patterns;
 
-  msInit('ms_location', 'locations', countries.map(c => ({ value: c, label: c })));
-
-  // The location panel has a lot of options so I add a live search box at the top
   const searchEl = document.createElement('input');
   searchEl.type = 'text';
   searchEl.placeholder = 'Search locations…';
   searchEl.className = 'ms_search';
-  searchEl.addEventListener('input', () => {
-    const q = searchEl.value.toLowerCase();
-    document.querySelectorAll('#ms_location_panel .ms_option').forEach(opt => {
-      opt.style.display = opt.textContent.toLowerCase().includes(q) ? '' : 'none';
-    });
+  panel.appendChild(searchEl);
+
+  const GROUPS = [
+    { key: 'top',  title: null },
+    { key: 'us',   title: 'U.S. states' },
+    { key: 'intl', title: 'International' },
+  ];
+  GROUPS.forEach(({ key, title }) => {
+    const items = index.options.filter(o => o.group === key);
+    if (items.length === 0) return;
+    const group = document.createElement('div');
+    group.className = 'ms_group';
+    if (title) {
+      const h = document.createElement('div');
+      h.className = 'ms_group_title';
+      h.textContent = title;
+      group.appendChild(h);
+    }
+    msInit('ms_location', 'locations', items, group);
+    panel.appendChild(group);
   });
-  document.getElementById('ms_location_panel').prepend(searchEl);
+
+  const noMatch = document.createElement('div');
+  noMatch.className = 'ms_empty';
+  noMatch.textContent = 'No matching locations';
+  noMatch.hidden = true;
+  panel.appendChild(noMatch);
+
+  // Filter options as you type; hide a group's title when none of its options match.
+  searchEl.addEventListener('input', () => {
+    const q = searchEl.value.trim().toLowerCase();
+    let anyVisible = false;
+    panel.querySelectorAll('.ms_group').forEach(group => {
+      let visible = 0;
+      group.querySelectorAll('.ms_option').forEach(opt => {
+        const show = opt.querySelector('.ms_option_label').textContent.toLowerCase().includes(q);
+        opt.hidden = !show;
+        if (show) visible++;
+      });
+      group.hidden = visible === 0;
+      if (visible) anyVisible = true;
+    });
+    noMatch.hidden = anyVisible;
+  });
 }
 
 // Search
@@ -264,13 +208,11 @@ function clearFilters() {
     document.querySelectorAll(`#${id}_panel input[type="checkbox"]`).forEach(cb => {
       cb.checked = false;
     });
-    // Also reset the location search box and unhide any filtered-out options
+    // Also reset the location search box, which unhides any filtered-out options
     const searchBox = document.querySelector(`#${id}_panel .ms_search`);
     if (searchBox) {
       searchBox.value = '';
-      document.querySelectorAll(`#${id}_panel .ms_option`).forEach(opt => {
-        opt.style.display = '';
-      });
+      searchBox.dispatchEvent(new Event('input'));
     }
     msRefresh(id, key);
   });
@@ -288,8 +230,10 @@ window.addEventListener('scroll', () => {
 async function performSearch() {
   document.getElementById('empty_state').style.display = 'none';
 
-  // Expand each selected location label into its DB query patterns
-  const locationPatterns = [...msState.locations].flatMap(c => locationPatternMap[c] || [`%${c}%`]);
+  // Expand each selected location into its DB query patterns (deduped — e.g. picking
+  // both "United States" and "California" would otherwise repeat California's).
+  const locationPatterns = [...new Set(
+    [...msState.locations].flatMap(v => locationPatternMap[v] || []))];
 
   const postedVal = document.getElementById('posted_select').value;
 

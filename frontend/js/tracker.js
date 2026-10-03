@@ -41,7 +41,7 @@ async function loadFolders() {
     folders = names;
 }
 
-// (Re)builds the folder dropdown and the modal's folder picker.
+// (Re)builds the folder picker and the modal's folder <select>.
 function populateFolderSelects() {
     const names = allFolderNames();
 
@@ -51,14 +51,146 @@ function populateFolderSelects() {
         localStorage.setItem('si_active_folder', activeFolder);
     }
 
-    const sel = document.getElementById('folder_select');
-    sel.innerHTML = `<option value="${ALL_FOLDERS}">All folders</option>`
-        + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
-    sel.value = activeFolder;
+    updateFolderButton();
 
     const msel = document.getElementById('m_folder');
     if (msel) msel.innerHTML = names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
 }
+
+// ── FOLDER PICKER (custom popup replacing the native <select>) ──────────────
+
+function folderAppCount(folder) {
+    if (folder === ALL_FOLDERS) return applications.length;
+    return applications.filter(a => (a.cycle || CURRENT_CYCLE) === folder).length;
+}
+
+// Shows the active folder's name + application count on the picker button.
+function updateFolderButton() {
+    document.getElementById('folder_btn_name').textContent =
+        activeFolder === ALL_FOLDERS ? 'All folders' : activeFolder;
+    document.getElementById('folder_btn_count').textContent = folderAppCount(activeFolder);
+}
+
+// One selectable row in the menu. Built with textContent: folder names are user input.
+function folderMenuItem(value, label, tag) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'folder_item';
+    item.setAttribute('role', 'option');
+    item.setAttribute('aria-selected', String(value === activeFolder));
+    item.dataset.folder = value;
+
+    const check = document.createElement('span');
+    check.className = 'folder_item_check';
+    check.textContent = value === activeFolder ? '✓' : '';
+
+    const name = document.createElement('span');
+    name.className = 'folder_item_name';
+    name.textContent = label;
+
+    item.append(check, name);
+    if (tag) {
+        const t = document.createElement('span');
+        t.className = 'folder_item_tag';
+        t.textContent = tag;
+        item.appendChild(t);
+    }
+    const count = document.createElement('span');
+    count.className = 'folder_item_count';
+    count.textContent = folderAppCount(value);
+    item.appendChild(count);
+    return item;
+}
+
+function folderMenuSection(title) {
+    const h = document.createElement('div');
+    h.className = 'folder_menu_title';
+    h.textContent = title;
+    return h;
+}
+
+// Rebuilds the menu each time it opens, so counts and the checkmark are always current.
+function renderFolderMenu() {
+    const menu = document.getElementById('folder_menu');
+    menu.replaceChildren();
+
+    menu.appendChild(folderMenuItem(ALL_FOLDERS, 'All folders'));
+
+    menu.appendChild(folderMenuSection('Recruitment cycles'));
+    PREDEFINED_CYCLES.forEach(c =>
+        menu.appendChild(folderMenuItem(c, c, c === CURRENT_CYCLE ? 'Current' : '')));
+
+    const custom = allFolderNames().filter(f => !PREDEFINED_CYCLES.includes(f));
+    if (custom.length) {
+        menu.appendChild(folderMenuSection('Your folders'));
+        custom.forEach(f => menu.appendChild(folderMenuItem(f, f)));
+    }
+
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'folder_item folder_item_new';
+    add.textContent = '+ New folder';
+    add.addEventListener('click', () => { closeFolderMenu(); createFolder(); });
+    menu.appendChild(add);
+}
+
+function openFolderMenu() {
+    renderFolderMenu();
+    const menu = document.getElementById('folder_menu');
+    menu.hidden = false;
+    document.getElementById('folder_btn').setAttribute('aria-expanded', 'true');
+    (menu.querySelector('.folder_item[aria-selected="true"]') || menu.querySelector('.folder_item')).focus();
+}
+
+function closeFolderMenu(returnFocus) {
+    const menu = document.getElementById('folder_menu');
+    if (menu.hidden) return;
+    menu.hidden = true;
+    const btn = document.getElementById('folder_btn');
+    btn.setAttribute('aria-expanded', 'false');
+    if (returnFocus) btn.focus();
+}
+
+function selectFolder(folder) {
+    activeFolder = folder;
+    localStorage.setItem('si_active_folder', activeFolder);
+    closeFolderMenu(true);
+    renderTable();
+}
+
+document.getElementById('folder_btn').addEventListener('click', () => {
+    if (document.getElementById('folder_menu').hidden) openFolderMenu();
+    else closeFolderMenu();
+});
+
+document.getElementById('folder_menu').addEventListener('click', e => {
+    const item = e.target.closest('.folder_item[data-folder]');
+    if (item) selectFolder(item.dataset.folder);
+});
+
+// Keyboard: arrows move between rows, Escape closes, Tab leaves and closes.
+document.getElementById('folder_menu').addEventListener('keydown', e => {
+    const items = [...document.querySelectorAll('#folder_menu .folder_item')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    else if (e.key === 'Home') { e.preventDefault(); items[0].focus(); }
+    else if (e.key === 'End') { e.preventDefault(); items[items.length - 1].focus(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeFolderMenu(true); }
+    else if (e.key === 'Tab') closeFolderMenu();
+});
+
+document.getElementById('folder_btn').addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' && document.getElementById('folder_menu').hidden) {
+        e.preventDefault();
+        openFolderMenu();
+    }
+});
+
+// Clicking anywhere outside the picker closes it.
+document.addEventListener('click', e => {
+    if (!e.target.closest('.folder_picker')) closeFolderMenu();
+});
 
 // Creates a new custom folder and switches to it.
 async function createFolder() {
@@ -403,6 +535,7 @@ function formatDate(dateStr) {
 }
 
 function updateStats() {
+    updateFolderButton();   // keep the picker's count in step with the table
     const visible = getVisibleApps();
     document.getElementById('stat_total').textContent = visible.length;
     document.getElementById('stat_pending').textContent =
@@ -527,11 +660,6 @@ document.getElementById('app_tbody').addEventListener('click', e => {
 });
 
 // Folder controls.
-document.getElementById('folder_select').addEventListener('change', e => {
-    activeFolder = e.target.value;
-    localStorage.setItem('si_active_folder', activeFolder);
-    renderTable();
-});
 document.getElementById('new_folder_btn').addEventListener('click', createFolder);
 document.getElementById('delete_folder_btn').addEventListener('click', deleteFolderApps);
 

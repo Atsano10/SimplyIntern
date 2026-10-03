@@ -92,6 +92,7 @@ function normalizeOnePart(part: string): string {
 function normalizeLocation(raw: string): string | null {
   if (!raw) return null;
   const detagged = raw
+    .replace(/<summary>[\s\S]*?<\/summary>/gi, '')   // drop the "N locations" label
     .replace(/<br\s*\/?>/gi, '|')
     .replace(/<[^>]+>/g, '')
     .replace(/\s+/g, ' ')

@@ -5,13 +5,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tracker — SimplyIntern</title>
-    <link rel="stylesheet" href="css/styles.css?v=4" />
+    <link rel="stylesheet" href="css/styles.css?v=5" />
     <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16.png" />
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png" />
-    <link rel="stylesheet" href="css/tracker.css?v=4" />
+    <link rel="stylesheet" href="css/tracker.css?v=5" />
     <script src="js/config.js"></script>
-    <script src="js/util.js?v=4"></script>
+    <script src="js/util.js?v=5"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
   <body>
@@ -27,8 +27,16 @@
     <div class="tracker_page">
       <div class="cycle_bar">
         <div class="cycle_left">
-          <label class="cycle_label" for="folder_select">Folder</label>
-          <select id="folder_select" class="cycle_select"></select>
+          <span class="cycle_label" id="folder_label">Folder</span>
+          <div class="folder_picker">
+            <button type="button" class="folder_btn" id="folder_btn"
+                    aria-haspopup="listbox" aria-expanded="false" aria-labelledby="folder_label folder_btn_name">
+              <span class="folder_btn_name" id="folder_btn_name"></span>
+              <span class="folder_btn_count" id="folder_btn_count"></span>
+              <span class="folder_caret">▾</span>
+            </button>
+            <div class="folder_menu" id="folder_menu" role="listbox" aria-labelledby="folder_label" hidden></div>
+          </div>
         </div>
         <div class="cycle_actions">
           <button class="cycle_btn" id="new_folder_btn">+ New folder</button>
@@ -185,8 +193,8 @@
       </div>
     </div>
 
-    <script src="js/auth.js?v=4"></script>
-    <script src="js/nav.js?v=4"></script>
-    <script src="js/tracker.js?v=4"></script>
+    <script src="js/auth.js?v=5"></script>
+    <script src="js/nav.js?v=5"></script>
+    <script src="js/tracker.js?v=5"></script>
   </body>
 </html>

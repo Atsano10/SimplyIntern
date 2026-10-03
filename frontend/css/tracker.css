@@ -31,7 +31,16 @@ body {
     letter-spacing: 0.4px;
 }
 
-.cycle_select {
+/* Folder picker: a button that opens a custom popup menu */
+.folder_picker {
+    position: relative;
+}
+
+.folder_btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 200px;
     padding: 8px 12px;
     border: 1.5px solid #d0b0b5;
     border-radius: 8px;
@@ -45,8 +54,122 @@ body {
     transition: border-color 0.2s;
 }
 
-.cycle_select:hover,
-.cycle_select:focus { border-color: #702632; }
+.folder_btn:hover,
+.folder_btn:focus-visible,
+.folder_btn[aria-expanded="true"] { border-color: #702632; }
+
+.folder_btn_name {
+    flex: 1;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.folder_btn_count {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #f7eeef;
+    color: #702632;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.folder_caret {
+    font-size: 10px;
+    opacity: 0.6;
+    transition: transform 0.2s;
+}
+
+.folder_btn[aria-expanded="true"] .folder_caret { transform: rotate(180deg); }
+
+.folder_menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 300;
+    min-width: 260px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding: 6px;
+    background: #FFFFFA;
+    border: 1.5px solid #d0b0b5;
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(8, 7, 5, 0.16);
+}
+
+.folder_menu_title {
+    margin-top: 6px;
+    padding: 8px 10px 4px;
+    border-top: 1px solid #f0e8ea;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: #9a8284;
+}
+
+.folder_item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 8px;
+    background: none;
+    color: #080705;
+    font-family: 'Saira', sans-serif;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    outline: none;
+}
+
+.folder_item:hover,
+.folder_item:focus-visible { background: #f7eeef; }
+
+.folder_item[aria-selected="true"] { color: #702632; font-weight: 600; }
+
+.folder_item_check {
+    width: 14px;
+    flex-shrink: 0;
+    color: #702632;
+}
+
+.folder_item_name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.folder_item_tag {
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: #702632;
+    color: #FFFFFA;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+
+.folder_item_count {
+    font-size: 12px;
+    color: #9a8284;
+    font-variant-numeric: tabular-nums;
+}
+
+.folder_item_new {
+    margin-top: 6px;
+    border-top: 1px solid #f0e8ea;
+    border-radius: 0 0 8px 8px;
+    padding-left: 32px;
+    color: #702632;
+    font-weight: 600;
+}
 
 .cycle_actions {
     display: flex;
@@ -592,9 +715,21 @@ body.dark .stat_number { color: #f0e8ea; }
 body.dark .stat_label { color: #9a8284; }
 
 body.dark .cycle_label { color: #9a8284; }
-body.dark .cycle_select { background: #241819; color: #f0e8ea; border-color: #4a3035; }
-body.dark .cycle_select:hover,
-body.dark .cycle_select:focus { border-color: #eeb9c2; }
+body.dark .folder_btn { background: #241819; color: #f0e8ea; border-color: #4a3035; }
+body.dark .folder_btn:hover,
+body.dark .folder_btn:focus-visible,
+body.dark .folder_btn[aria-expanded="true"] { border-color: #eeb9c2; }
+body.dark .folder_btn_count { background: #3a2a2c; color: #eeb9c2; }
+body.dark .folder_menu { background: #2c2022; border-color: #4a3035; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45); }
+body.dark .folder_menu_title,
+body.dark .folder_item_new { border-top-color: #3a2a2c; }
+body.dark .folder_item { color: #f0e8ea; }
+body.dark .folder_item:hover,
+body.dark .folder_item:focus-visible { background: #3a2a2c; }
+body.dark .folder_item[aria-selected="true"],
+body.dark .folder_item_check,
+body.dark .folder_item_new { color: #eeb9c2; }
+body.dark .folder_item_tag { background: #eeb9c2; color: #241819; }
 body.dark .cycle_btn { color: #eeb9c2; border-color: #eeb9c2; }
 body.dark .cycle_btn:hover { background: #702632; color: #FFFFFA; border-color: #702632; }
 body.dark .cycle_btn.danger { color: #f0a0ab; border-color: #7a3a42; }
