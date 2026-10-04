@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
-import { cleanCompanyName, timingSafeEqual } from './helpers.ts';
+import { cleanCellText, cleanCompanyName, parseGithubAge, timingSafeEqual } from './helpers.ts';
 
 // Shape of a job listing as stored in the DB
 interface Listing {
@@ -378,19 +378,19 @@ function parseHtmlTable(content: string): Listing[] {
     const [companyCol, roleCol, locationCol, linkCol] = cols;
     const dateCol = cols[4]; // SimplifyJobs: Company | Role | Location | Link | Date Posted
 
-    const rawCompanyText = companyCol.replace(/<[^>]+>/g, '').replace(/[🔥🔒]/g, '').trim();
+    const rawCompanyText = cleanCellText(companyCol.replace(/<[^>]+>/g, ''));
     let company: string;
     if (rawCompanyText === '↳') {
       if (!lastCompany) continue;
       company = lastCompany;
     } else {
       const aM = companyCol.match(/<a[^>]*>([^<]+)<\/a>/);
-      company = (aM ? aM[1] : rawCompanyText).replace(/[🔥🔒]/g, '').trim();
+      company = cleanCellText(aM ? aM[1] : rawCompanyText);
       if (!company) continue;
       lastCompany = company;
     }
 
-    const role     = roleCol.replace(/<[^>]+>/g, '').replace(/[🔒✅❌🛂🎓]/g, '').trim();
+    const role     = cleanCellText(roleCol.replace(/<[^>]+>/g, ''));
     const location = normalizeLocation(locationCol);
     const urlM     = linkCol.match(/href="(https?:\/\/[^"]+)"/);
     const url      = urlM?.[1];
@@ -428,8 +428,8 @@ function parsePipeTable(content: string): Listing[] {
     const url = mdLink?.[1] ?? htmlLink?.[1];
     if (!url) continue;
 
-    const role = roleRaw.replace(/[*_`[\]🔒✅❌🛂🎓]/g, '').trim();
-    const companyClean = companyRaw.replace(/[*_`[\]🔥]/g, '').trim();
+    const role = cleanCellText(roleRaw.replace(/[*_`[\]]/g, ''));
+    const companyClean = cleanCellText(companyRaw.replace(/[*_`[\]]/g, ''));
     let company: string;
     if (companyClean === '↳') {
       if (!lastCompany) continue;
@@ -449,40 +449,6 @@ function parsePipeTable(content: string): Listing[] {
     });
   }
   return jobs;
-}
-
-// Converts the relative "age" value from a GitHub README's Date-Posted column
-// (e.g. "4d", "2mo", "1y", "12h", or an absolute "Jul 15") into an absolute
-// YYYY-MM-DD date. Because this function reruns daily and the age grows in
-// lockstep with the calendar, today-minus-age yields a STABLE posted date across
-// runs (posted 10d ago stays the same absolute date tomorrow). Returns null when
-// the value is missing or unparseable, so posted_at simply stays null (no regression).
-function parseGithubAge(raw: string | undefined): string | null {
-  if (!raw) return null;
-  const s = raw.replace(/<[^>]+>/g, '').trim();
-  if (!s) return null;
-
-  const toDate = (d: Date) => d.toISOString().split('T')[0];
-
-  // Relative age like "3d", "2w", "5mo", "1y", "12h"
-  const m = s.match(/^(\d+)\s*(h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|mo|mos|month|months|y|yr|yrs|year|years)(?:\s+ago)?$/i);
-  if (m) {
-    const n = parseInt(m[1], 10);
-    const unit = m[2].toLowerCase();
-    const d = new Date();
-    if      (unit.startsWith('h'))  d.setHours(d.getHours() - n);
-    else if (unit.startsWith('d'))  d.setDate(d.getDate() - n);
-    else if (unit.startsWith('w'))  d.setDate(d.getDate() - n * 7);
-    else if (unit.startsWith('mo')) d.setMonth(d.getMonth() - n);
-    else if (unit.startsWith('y'))  d.setFullYear(d.getFullYear() - n);
-    return toDate(d);
-  }
-
-  // Absolute date the repo may use instead (e.g. "Jul 15", "2026-07-15")
-  const parsed = new Date(s);
-  if (!isNaN(parsed.getTime())) return toDate(parsed);
-
-  return null;
 }
 
 // Auto-detects which format the README uses and calls the right parser
@@ -566,7 +532,14 @@ Deno.serve(async (req: Request) => {
     if (seen.has(j.url)) return false;
     seen.add(j.url);
     return true;
-  });
+  }).map(j => ({
+    // Safety net: one broken half-emoji anywhere makes Postgres reject the WHOLE batch
+    // of 500, so strip lone surrogates from every text field before saving.
+    ...j,
+    title:    j.title.replace(/\p{Cs}/gu, ''),
+    company:  j.company.replace(/\p{Cs}/gu, ''),
+    location: j.location?.replace(/\p{Cs}/gu, '') ?? null,
+  }));
 
   // Upsert in batches of 500 to stay within Supabase request size limits
   let upserted = 0;
@@ -586,7 +559,8 @@ Deno.serve(async (req: Request) => {
     .delete({ count: 'exact' })
     .lt('updated_at', cutoff);
 
-  const summary = { total_found: unique.length, upserted, removed: removed ?? 0 };
+  // `failed` > 0 means a batch was rejected — check the logs for "Upsert batch error".
+  const summary = { total_found: unique.length, upserted, failed: unique.length - upserted, removed: removed ?? 0 };
   console.log('daily-refresh complete:', summary);
 
   return json(200, summary);
