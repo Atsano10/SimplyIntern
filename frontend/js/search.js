@@ -3,6 +3,18 @@ let currentFilters = {};
 let currentOffset  = 0;
 let isLoading      = false;
 let hasMore        = true;
+// Bumped on every new search so a slow request from an older search can't append
+// its results to the new one.
+let searchGen      = 0;
+
+// On refresh we re-fetch as many rows as were loaded, capped so a user who scrolled
+// thousands of rows deep doesn't fire dozens of requests at once.
+const MAX_RESTORE_ROWS = 500;
+const SCROLL_KEY = 'si_search_scroll';
+
+// We restore scroll ourselves once results load. The browser's automatic restore
+// runs before the async results exist, so it would land on an empty page at the top.
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
 // Multi-select filter state - I track which values are checked in each dropdown
 const msState = {
@@ -173,7 +185,7 @@ async function loadLocationFilter() {
 
 // Search
 
-document.getElementById('search_btn').addEventListener('click', performSearch);
+document.getElementById('search_btn').addEventListener('click', () => performSearch());
 document.getElementById('search_input').addEventListener('keydown', e => {
   if (e.key === 'Enter') performSearch();
 });
@@ -218,16 +230,138 @@ function clearFilters() {
   });
 }
 
-// Listens for scroll position and triggers loadMore when the user gets near the bottom
-window.addEventListener('scroll', () => {
-  const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-  if (scrollTop + clientHeight >= scrollHeight - 300 && !isLoading && hasMore) {
-    loadMore();
-  }
+// ── Infinite scroll ──────────────────────────────────────────────────────────
+// An invisible marker sits under the results. The browser tells us when it comes
+// within 300px of the viewport, instead of us checking on every scroll event.
+const scrollSentinel = document.getElementById('scroll_sentinel');
+
+function sentinelNearViewport() {
+  return scrollSentinel.getBoundingClientRect().top < window.innerHeight + 300;
+}
+
+// Loads the next page if there's room for it. Also called after each page renders:
+// the observer only fires when the marker *enters* view, so if a page wasn't tall
+// enough to push it back out (big screens), nothing else would trigger the next load.
+function maybeLoadMore() {
+  if (!document.getElementById('job_list').classList.contains('visible')) return;
+  if (isLoading || !hasMore || !sentinelNearViewport()) return;
+  loadMore();
+}
+
+new IntersectionObserver(entries => {
+  if (entries.some(e => e.isIntersecting)) maybeLoadMore();
+}, { rootMargin: '0px 0px 300px 0px' }).observe(scrollSentinel);
+
+// ── Search state in the URL ──────────────────────────────────────────────────
+// The URL holds the search (search.html?q=swe&loc=us:CA&sort=newest) so a refresh,
+// the back button, or a shared link brings back the same results.
+const URL_KEYS = ['q', 'loc', 'ind', 'type', 'sort', 'posted', 'remote'];
+
+function filtersToQuery() {
+  const p = new URLSearchParams();
+  if (currentFilters.keyword) p.set('q', currentFilters.keyword);
+  msState.locations.forEach(v => p.append('loc', v));
+  msState.industries.forEach(v => p.append('ind', v));
+  msState.jobTypes.forEach(v => p.append('type', v));
+  // Always written, so even a search with no filters leaves a marker in the URL.
+  p.set('sort', currentFilters.sort);
+  if (currentFilters.postedWithinDays) p.set('posted', String(currentFilters.postedWithinDays));
+  if (currentFilters.remoteOnly) p.set('remote', '1');
+  return '?' + p.toString();
+}
+
+// Sets a <select> only if the value is one of its options (URLs can be hand-edited).
+function setSelectIfValid(id, value) {
+  const sel = document.getElementById(id);
+  if (value != null && [...sel.options].some(o => o.value === value)) sel.value = value;
+}
+
+// Checks the given values in a filter panel. Values with no matching checkbox are
+// ignored, so a stale or edited URL can't put unknown values into the search.
+function msSelect(id, stateKey, values) {
+  const wanted = new Set(values);
+  document.querySelectorAll(`#${id}_panel input[type="checkbox"]`).forEach(cb => {
+    if (wanted.has(cb.value)) {
+      cb.checked = true;
+      msState[stateKey].add(cb.value);
+    }
+  });
+  msRefresh(id, stateKey);
+}
+
+function applyQueryToForm(params) {
+  document.getElementById('search_input').value = params.get('q') || '';
+  setSelectIfValid('sort_select', params.get('sort'));
+  setSelectIfValid('posted_select', params.get('posted'));
+  document.getElementById('remote_only').checked = params.get('remote') === '1';
+  msSelect('ms_location', 'locations', params.getAll('loc'));
+  msSelect('ms_industry', 'industries', params.getAll('ind'));
+  msSelect('ms_type', 'jobTypes', params.getAll('type'));
+}
+
+// ── Scroll position across refreshes ─────────────────────────────────────────
+// Saved in sessionStorage (this tab only; cleared when it closes). We remember the
+// card at the top of the screen, not just the pixel offset, because new listings
+// from the daily refresh shift every row down under "Newest" sort.
+function saveScrollSnapshot() {
+  try {
+    const cards = document.querySelectorAll('#job_list .jobs');
+    // Nothing on screen (mid-load, or no results): keep the previous snapshot. If a
+    // new search is loading, its URL already differs, so that snapshot won't apply.
+    if (cards.length === 0) return;
+    const anchor = [...cards].find(c => c.getBoundingClientRect().bottom > 0);
+    sessionStorage.setItem(SCROLL_KEY, JSON.stringify({
+      query:     location.search,
+      count:     cards.length,
+      anchorId:  anchor?.dataset.listingId || null,
+      anchorTop: anchor ? anchor.getBoundingClientRect().top : 0,
+      scrollY:   window.scrollY,
+    }));
+  } catch (_) {}
+}
+
+// pagehide covers refresh and navigation. visibilitychange covers mobile browsers,
+// which can kill a backgrounded tab without ever firing pagehide.
+window.addEventListener('pagehide', saveScrollSnapshot);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveScrollSnapshot();
 });
 
-// Runs a fresh search with the current filters, replacing any existing results
-async function performSearch() {
+// Returns the saved snapshot only if it belongs to the search currently in the URL.
+function readScrollSnapshot() {
+  try {
+    const snap = JSON.parse(sessionStorage.getItem(SCROLL_KEY) || 'null');
+    return snap && snap.query === location.search ? snap : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Puts the saved card back at the same spot on screen, or falls back to the old
+// pixel offset if that listing is gone or no longer within the restored rows.
+function restoreScroll(snap) {
+  const card = snap.anchorId &&
+    document.querySelector(`#job_list .jobs[data-listing-id="${CSS.escape(snap.anchorId)}"]`);
+  const y = card
+    ? card.getBoundingClientRect().top + window.scrollY - (snap.anchorTop || 0)
+    : snap.scrollY || 0;
+  window.scrollTo(0, Math.max(0, y));
+}
+
+// On page load, rerun the search described by the URL, if there is one.
+async function initFromUrl(locationsReady) {
+  const params = new URLSearchParams(location.search);
+  if (!URL_KEYS.some(k => params.has(k))) return;
+  // Location checkboxes (and their DB patterns) only exist once the panel is built.
+  if (params.has('loc')) await locationsReady;
+  applyQueryToForm(params);
+  performSearch({ restore: readScrollSnapshot() });
+}
+
+// Runs a fresh search with the current filters, replacing any existing results.
+// With `restore` (a scroll snapshot), it reloads as many rows as were on screen
+// before the refresh and scrolls back to where the user was.
+async function performSearch({ restore = null } = {}) {
   document.getElementById('empty_state').style.display = 'none';
 
   // Expand each selected location into its DB query patterns (deduped — e.g. picking
@@ -248,45 +382,77 @@ async function performSearch() {
   };
   currentOffset = 0;
   hasMore       = true;
-  isLoading     = false;
+  // Held true during the first fetch so the scroll marker (visible on a near-empty
+  // page) can't start a loadMore for this same first page.
+  isLoading     = true;
+  const gen     = ++searchGen;
+
+  history.replaceState(null, '', filtersToQuery());
 
   const jobList = document.getElementById('job_list');
   jobList.classList.add('visible');
   jobList.innerHTML = '<div class="no_results">Loading listings...</div>';
 
+  // Restoring fetches all the pages in parallel (not one by one) so it's quick.
+  const rows  = restore ? Math.min(Math.max(restore.count || 0, PAGE_SIZE), MAX_RESTORE_ROWS) : PAGE_SIZE;
+  const pages = Math.ceil(rows / PAGE_SIZE);
+
   try {
-    const jobs = await fetchJobs(currentFilters, 0, PAGE_SIZE);
+    const results = await Promise.all(
+      Array.from({ length: pages }, (_, i) => fetchJobs(currentFilters, i * PAGE_SIZE, PAGE_SIZE)));
+    if (gen !== searchGen) return;   // a newer search started while this one loaded
+
+    // Stop at the first short page; anything after it would leave a gap.
+    const jobs = [];
+    for (const page of results) {
+      jobs.push(...page);
+      if (page.length < PAGE_SIZE) break;
+    }
     renderResults(jobs, false);
     currentOffset = jobs.length;
-    hasMore = jobs.length === PAGE_SIZE;
+    hasMore = jobs.length === pages * PAGE_SIZE;
+    if (restore) restoreScroll(restore);
   } catch (err) {
+    if (gen !== searchGen) return;
     console.error('Search failed:', err);
     jobList.innerHTML = '<div class="no_results">Could not load listings. Please try again.</div>';
+    hasMore = false;
   }
+
+  isLoading = false;
+  maybeLoadMore();
 }
 
 // Fetches the next page of results and appends them below the existing ones
 async function loadMore() {
   if (isLoading || !hasMore) return;
   isLoading = true;
+  const gen = searchGen;
 
-  const sentinel = document.createElement('div');
-  sentinel.id = 'load_sentinel';
-  sentinel.className = 'no_results';
-  sentinel.textContent = 'Loading more...';
-  document.getElementById('job_list').appendChild(sentinel);
+  const loadingMsg = document.createElement('div');
+  loadingMsg.id = 'load_more_msg';
+  loadingMsg.className = 'no_results';
+  loadingMsg.textContent = 'Loading more...';
+  document.getElementById('job_list').appendChild(loadingMsg);
 
   try {
     const jobs = await fetchJobs(currentFilters, currentOffset, PAGE_SIZE);
-    document.getElementById('load_sentinel')?.remove();
+    if (gen !== searchGen) return;   // results belong to an older search; drop them
+    loadingMsg.remove();
     renderResults(jobs, true);
     currentOffset += jobs.length;
     hasMore = jobs.length === PAGE_SIZE;
   } catch {
-    document.getElementById('load_sentinel')?.remove();
+    if (gen !== searchGen) return;
+    loadingMsg.remove();
+    // Stop auto-retrying; otherwise a visible marker would loop on a failing request.
+    // Scrolling away and back (re-entering view) tries again.
+    isLoading = false;
+    return;
   }
 
   isLoading = false;
+  maybeLoadMore();
 }
 
 // Builds and inserts job cards into the list.
@@ -315,6 +481,7 @@ function renderResults(jobs, append) {
 
     const div = document.createElement('div');
     div.className = 'jobs';
+    if (job.id) div.dataset.listingId = job.id;   // anchor for scroll restore
     div.innerHTML = `
       <div class="left_jobs">
         <div class="info_title">${esc(job.title)}</div>
@@ -549,7 +716,10 @@ msInit('ms_type', 'jobTypes', [
   { value: 'externship',  label: 'Externship' },
 ]);
 
-loadLocationFilter();
+const locationsReady = loadLocationFilter();
+
+// If the URL describes a search (refresh, back button, shared link), run it again.
+initFromUrl(locationsReady);
 
 // Refresh the saved-jobs cache from Supabase so bookmarks render correctly.
 syncSavedFromCloud();
