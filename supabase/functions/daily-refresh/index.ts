@@ -1,4 +1,5 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { cleanCompanyName, timingSafeEqual } from './helpers.ts';
 
 // Shape of a job listing as stored in the DB
 interface Listing {
@@ -273,26 +274,47 @@ function normalizeGreenhouseLocation(raw: string | null): string | null {
 
 // Greenhouse
 
-// The list of companies I pull from Greenhouse's public job board API
+// The list of companies I pull from Greenhouse's public job board API.
+// Checked 2026-10-04: every slug here is a live board. 41 others returned 404 (moved
+// off Greenhouse or renamed) and were removed — incl. ey, snowflake, notion, ramp,
+// plaid, retool, rippling, deel, doordash, unity, zendesk, confluent, hashicorp,
+// grammarly, miro, sentinelone, benchling, amplitude, clickup, segment. Many moved to
+// Ashby/Lever (see the "more data sources" TODO). Duplicates fever/feverup and
+// rocketlab/rocketlabusa resolved to the live one; internshiplist (an aggregator) is gone.
 const GREENHOUSE_COMPANIES = [
-  'ey', 'cloudflare', 'didi', 'alo', 'thesocialhub', 'ses', 'roku', 'celonis',
-  'anymindgroup', 'munichre', 'sonypicturesentertainment', 'snowflake',
-  'revolutionmedicines', 'authenticbrands', 'internshiplist', 'asm', 'astranis',
-  'xometry', 'rocketlab', 'inter', 'neuralink', 'equipmentshare', 'lge',
-  'gallagher', 'stepstonegroup', 'fever', 'planet', 'agoda', 'sentinelone',
-  'feverup', 'superhuman', 'aeg', 'rocketlabusa', 'hasbro', 'appier', 'dept',
-  'sezzle', 'hunterdouglas', 'unity', 'dialectica', 'mirakl', 'bybit',
-  'rocket', 'casetify', 'sanmar', 'pacvue', 'xpeng',
-  'stripe', 'figma', 'notion', 'discord', 'lyft', 'pinterest', 'mongodb',
-  'brex', 'plaid', 'ramp', 'airtable', 'retool', 'gusto', 'rippling',
-  'amplitude', 'hashicorp', 'confluent', 'scaleai', 'mercury', 'webflow',
-  'intercom', 'benchling', 'lattice', 'airbnb', 'doordash', 'instacart',
-  'robinhood', 'coinbase', 'databricks', 'duolingo', 'squarespace', 'asana',
-  'twilio', 'zendesk', 'hubspot', 'datadog', 'elastic', 'mixpanel',
-  'grammarly', 'loom', 'deel', 'dropbox', 'okta', 'gitlab', 'mozilla',
-  'clickup', 'miro', 'pendo', 'fullstory', 'heap', 'segment', 'brainstation',
-  'workato', 'toast', 'ripple', 'block', 'point72', 'virtu', 'verkada',
+  'cloudflare', 'didi', 'thesocialhub', 'ses', 'roku', 'celonis',
+  'revolutionmedicines', 'asm', 'astranis', 'xometry', 'rocketlab', 'inter',
+  'neuralink', 'agoda', 'feverup', 'hasbro', 'appier', 'dept', 'sezzle',
+  'hunterdouglas', 'mirakl', 'bybit', 'casetify', 'sanmar', 'pacvue',
+  'stripe', 'figma', 'discord', 'lyft', 'pinterest', 'mongodb', 'brex',
+  'airtable', 'gusto', 'scaleai', 'mercury', 'webflow', 'intercom', 'lattice',
+  'airbnb', 'instacart', 'robinhood', 'coinbase', 'databricks', 'duolingo',
+  'squarespace', 'asana', 'twilio', 'hubspot', 'datadog', 'elastic', 'mixpanel',
+  'dropbox', 'okta', 'gitlab', 'mozilla', 'pendo', 'brainstation', 'workato',
+  'toast', 'ripple', 'block', 'point72', 'virtu', 'verkada',
 ];
+
+// Board names cleanCompanyName can't fix ("Inter Carreiras" = "Inter Careers").
+const COMPANY_NAME_OVERRIDES: Record<string, string> = {
+  inter:   'Inter',
+  hubspot: 'HubSpot',
+  intercom: 'Intercom',   // board is branded "Fin", its AI product
+};
+
+// The company's real display name from its Greenhouse board ("scaleai" -> "Scale AI"),
+// falling back to the capitalized slug if the lookup fails.
+async function fetchCompanyName(slug: string): Promise<string> {
+  if (COMPANY_NAME_OVERRIDES[slug]) return COMPANY_NAME_OVERRIDES[slug];
+  try {
+    const res = await fetch(`https://boards-api.greenhouse.io/v1/boards/${slug}`,
+      { signal: AbortSignal.timeout(8000) });
+    if (res.ok) {
+      const name = cleanCompanyName(String((await res.json())?.name ?? ''));
+      if (name) return name;
+    }
+  } catch { /* fall through to the slug */ }
+  return capitalize(slug);
+}
 
 // Fetches internship listings from a company's Greenhouse job board and normalizes the data
 async function fetchGreenhouse(company: string): Promise<Listing[]> {
@@ -304,11 +326,16 @@ async function fetchGreenhouse(company: string): Promise<Listing[]> {
     if (!res.ok) return [];
     // deno-lint-ignore no-explicit-any
     const data: any = await res.json();
-    return (data.jobs ?? [])
-      .filter((j: any) => isInternship(j.title))
+    // deno-lint-ignore no-explicit-any
+    const interns = (data.jobs ?? []).filter((j: any) => isInternship(j.title));
+    if (interns.length === 0) return [];
+    // Only look up the name for boards that actually have internships (saves requests).
+    const companyName = await fetchCompanyName(company);
+    return interns
+      // deno-lint-ignore no-explicit-any
       .map((j: any): Listing => ({
         title:      j.title,
-        company:    capitalize(company),
+        company:    companyName,
         location:   normalizeGreenhouseLocation(j.location?.name ?? null),
         pay:        null,
         type:       getType(j.title),
@@ -493,10 +520,29 @@ async function fetchGithubRepo(owner: string, repo: string): Promise<Listing[]> 
 }
 
 // Main handler
-// Invoked daily by the pg_cron job in migration 010 (and manually on demand). It
+// Invoked daily by the pg_cron job (migration 019) and manually on demand. It
 // pulls fresh listings from Greenhouse and GitHub, deduplicates by URL, upserts
 // everything to the DB, and cleans up anything not seen in the last 30 days.
-Deno.serve(async (_req: Request) => {
+//
+// Locked with a shared secret: the function has to stay verify_jwt = false (the cron
+// job calls it with the public key, not a user JWT), so without this check anyone
+// with the public key could trigger a full ~70-board scrape whenever they liked.
+// The cron job reads the same secret from Supabase Vault and sends it as a header.
+function json(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
+Deno.serve(async (req: Request) => {
+  const expected = Deno.env.get('REFRESH_SECRET');
+  if (!expected) {
+    // Fail closed: a missing secret must never mean "open to everyone".
+    console.error('daily-refresh: REFRESH_SECRET is not set — refusing to run.');
+    return json(500, { error: 'Not configured' });
+  }
+  if (!timingSafeEqual(req.headers.get('x-refresh-secret') ?? '', expected)) {
+    return json(401, { error: 'Unauthorized' });
+  }
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -541,7 +587,5 @@ Deno.serve(async (_req: Request) => {
   const summary = { total_found: unique.length, upserted, removed: removed ?? 0 };
   console.log('daily-refresh complete:', summary);
 
-  return new Response(JSON.stringify(summary), {
-    headers: { 'Content-Type': 'application/json' },
-  });
+  return json(200, summary);
 });
