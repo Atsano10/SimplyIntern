@@ -533,13 +533,15 @@ function json(status: number, body: unknown): Response {
 }
 
 Deno.serve(async (req: Request) => {
-  const expected = Deno.env.get('REFRESH_SECRET');
+  // Trimmed on both sides: a stray space or newline picked up while copy-pasting the
+  // secret into the dashboard or a header shouldn't lock the cron job out.
+  const expected = (Deno.env.get('REFRESH_SECRET') ?? '').trim();
   if (!expected) {
     // Fail closed: a missing secret must never mean "open to everyone".
     console.error('daily-refresh: REFRESH_SECRET is not set — refusing to run.');
     return json(500, { error: 'Not configured' });
   }
-  if (!timingSafeEqual(req.headers.get('x-refresh-secret') ?? '', expected)) {
+  if (!timingSafeEqual((req.headers.get('x-refresh-secret') ?? '').trim(), expected)) {
     return json(401, { error: 'Unauthorized' });
   }
 
