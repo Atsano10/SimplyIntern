@@ -3,3 +3,8 @@
 
 [functions.daily-refresh]
 verify_jwt = false
+
+# The session is checked inside the function (auth.getUser), which works with both
+# legacy JWT keys and the new publishable/secret keys.
+[functions.verify-link]
+verify_jwt = false

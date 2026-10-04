@@ -115,6 +115,7 @@ async function applyFromSaved(job, btn) {
 
   const entry = {
     listingId: job.listingId,
+    url:       job.url || '',
     position:  job.title,
     company:   job.company,
     location:  job.location || '',
@@ -130,6 +131,7 @@ async function applyFromSaved(job, btn) {
       const { data } = await client.from('applications').insert({
         user_id:    user.id,
         listing_id: entry.listingId,
+        url:        entry.url || null,   // the DB also fills this from the listing
         position:   entry.position,
         company:    entry.company,
         location:   entry.location,

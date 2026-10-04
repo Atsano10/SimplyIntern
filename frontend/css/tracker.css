@@ -460,6 +460,79 @@ body {
     min-height: 18px;
 }
 
+/* Shown when some rows have no listing link */
+.import_notice {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #856404;
+    background: #fff3cd;
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+/* Outline button between Cancel and the main action */
+.modal_secondary {
+    padding: 8px 18px;
+    border: 1.5px solid #702632;
+    background: none;
+    border-radius: 8px;
+    font-family: 'Saira', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #702632;
+    transition: all 0.2s;
+}
+
+.modal_secondary:hover {
+    background: #702632;
+    color: #FFFFFA;
+}
+
+.modal_save:disabled,
+.modal_secondary:disabled,
+.modal_cancel:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* ── LISTING LINKS ── */
+.required_mark { color: #b02a37; }
+
+.field_hint {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #888;
+}
+
+.form_group input[readonly] {
+    color: #888;
+    background: #f7eff0;
+}
+
+.app_link {
+    margin-left: 4px;
+    color: #702632;
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.app_link:hover { color: #080705; }
+
+.imported_tag {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    vertical-align: middle;
+    background: #eee5e6;
+    color: #6b5a5d;
+    cursor: help;
+}
+
 /* ── TABLE ── */
 .table_wrapper {
     overflow-x: auto;
@@ -798,6 +871,15 @@ body.dark .form_group textarea:focus {
 }
 body.dark .modal_cancel { color: #9a8284; border-color: #4a3035; }
 body.dark .modal_cancel:hover { border-color: #eeb9c2; color: #eeb9c2; }
+body.dark .modal_secondary { color: #eeb9c2; border-color: #eeb9c2; }
+body.dark .modal_secondary:hover { background: #702632; color: #FFFFFA; border-color: #702632; }
+body.dark .import_notice { background: #2a200a; color: #ffc107; }
+body.dark .field_hint { color: #9a8284; }
+body.dark .form_group input[readonly] { color: #9a8284; background: #2c2022; }
+body.dark .app_link { color: #eeb9c2; }
+body.dark .app_link:hover { color: #FFFFFA; }
+body.dark .imported_tag { background: #3a2a2c; color: #cbb9bd; }
+body.dark .required_mark { color: #f08a96; }
 
 body.dark .import_btn { color: #eeb9c2; border-color: #eeb9c2; }
 body.dark .import_btn:hover { background: #702632; color: #FFFFFA; border-color: #702632; }

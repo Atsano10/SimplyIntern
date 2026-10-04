@@ -632,6 +632,7 @@ async function markApplied(btn) {
 
   const entry = {
     listingId: btn.dataset.listingId || null,
+    url:       jobById[btn.dataset.listingId]?.url || '',
     position:  btn.dataset.title,
     company:   btn.dataset.company,
     location:  btn.dataset.location,
@@ -647,6 +648,7 @@ async function markApplied(btn) {
       const { data, error } = await client.from('applications').insert({
         user_id:    user.id,
         listing_id: entry.listingId,
+        url:        entry.url || null,   // the DB also fills this from the listing
         position:   entry.position,
         company:    entry.company,
         location:   entry.location,

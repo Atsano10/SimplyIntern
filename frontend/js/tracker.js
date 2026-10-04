@@ -287,6 +287,8 @@ async function loadApplications() {
                     // Cloud has data — use it as the source of truth
                     applications = data.map(row => ({
                         id: row.id,
+                        listingId: row.listing_id || null,
+                        url: row.url || '',
                         position: row.position,
                         company: row.company,
                         location: row.location || '',
@@ -339,6 +341,8 @@ async function syncLocalApps(user) {
             .from('applications')
             .insert({
                 user_id: user.id,
+                listing_id: app.listingId || null,
+                url: app.url || null,
                 position: app.position,
                 company: app.company,
                 location: app.location,
@@ -399,6 +403,7 @@ async function saveApplication(entry) {
                 const { error } = await client
                     .from('applications')
                     .update({
+                        url: entry.url || null,
                         position: entry.position,
                         company: entry.company,
                         location: entry.location,
@@ -417,6 +422,8 @@ async function saveApplication(entry) {
                     .from('applications')
                     .insert({
                         user_id: user.id,
+                        listing_id: entry.listingId || null,
+                        url: entry.url || null,
                         position: entry.position,
                         company: entry.company,
                         location: entry.location,
@@ -508,9 +515,17 @@ function renderTable() {
 
     tbody.innerHTML = visible.map((app, i) => {
         const cls = STATUS_CLASS[app.status] || 'Pending';
+        const href = safeHref(app.url);
+        const linkHtml = href
+            ? ` <a class="app_link" href="${esc(href)}" target="_blank" rel="noopener noreferrer" title="Open job posting" aria-label="Open job posting">&#8599;</a>`
+            : '';
+        // No link and not from our listings = imported without one; it doesn't score.
+        const importedHtml = (!app.url && !app.listingId)
+            ? ' <span class="imported_tag" title="No listing link, so this one doesn’t count on the leaderboard. Edit it to add one.">Imported</span>'
+            : '';
         return `
         <tr>
-            <td>${esc(app.position)}</td>
+            <td>${esc(app.position)}${linkHtml}${importedHtml}</td>
             <td>${esc(app.company)}</td>
             <td>${esc(app.location) || '—'}</td>
             <td>${esc(app.pay) || '—'}</td>
@@ -612,7 +627,67 @@ function renderInsights() {
     `).join('');
 }
 
+// ── LISTING LINKS ───────────────────────────────────────────────────────────
+// Every application needs the link to its job posting, and the verify-link edge
+// function checks that the posting really exists. Blocking bad links here is just
+// for the user's benefit: the leaderboard only trusts what the server recorded
+// (migration 018), so skipping this code doesn't earn points.
+
+const VERIFY_BATCH = 25;   // the edge function's per-request limit
+
+// Adds https:// when someone pastes "www.site.com/job" without it.
+function normalizeUrlInput(raw) {
+    const v = (raw || '').trim();
+    if (!v) return '';
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(v) && /^[\w-]+(\.[\w-]+)+(\/|\?|$)/.test(v)) return 'https://' + v;
+    return v;
+}
+
+// Only http(s) links are ever rendered as clickable.
+function safeHref(url) {
+    return /^https?:\/\//i.test(url || '') ? url : '';
+}
+
+// Asks the server whether each URL is a real posting. Resolves to
+// [{ url, status, reason }] in order (status: ok | unverifiable | dead | invalid).
+// Throws if the check itself couldn't run (offline, signed out, function down).
+async function verifyLinks(urls, onProgress) {
+    const results = [];
+    for (let i = 0; i < urls.length; i += VERIFY_BATCH) {
+        const { data, error } = await client.functions.invoke('verify-link', {
+            body: { urls: urls.slice(i, i + VERIFY_BATCH) },
+        });
+        if (error || !Array.isArray(data?.results)) throw new Error(error?.message || 'Link check failed');
+        results.push(...data.results);
+        if (onProgress) onProgress(results.length, urls.length);
+    }
+    return results;
+}
+
+// 'unverifiable' (the site blocks automated checks) is allowed through.
+const linkBlocked = r => r.status === 'dead' || r.status === 'invalid';
+
 // ── MODAL ───────────────────────────────────────────────────────────────────
+
+// Link rules for the row being edited:
+//  - from our listings: fixed (the DB always uses the listing's own URL)
+//  - imported without a link: optional (adding one makes it count)
+//  - everything else, including new apps: required
+function setupLinkField(app) {
+    const input = document.getElementById('m_url');
+    const hint = document.getElementById('m_url_hint');
+    const fromListing = !!app?.listingId;
+    const optional = !!app && !app.url && !fromListing;
+
+    input.value = app?.url || '';
+    input.readOnly = fromListing;
+    document.getElementById('m_url_required').hidden = optional || fromListing;
+    hint.textContent = fromListing
+        ? 'Added from a SimplyIntern listing, so the link is already verified.'
+        : optional
+            ? 'Optional for imported apps. Add the posting link to count this one on the leaderboard.'
+            : 'We check that the posting exists. Only apps with a real link count on the leaderboard.';
+}
 
 function openModal(app = null) {
     editingApp = app;
@@ -638,6 +713,7 @@ function openModal(app = null) {
         document.getElementById('m_notes').value = '';
         document.getElementById('m_folder').value = cycleForNewApp();
     }
+    setupLinkField(app);
 
     document.getElementById('modal_overlay').style.display = 'flex';
 }
@@ -679,7 +755,42 @@ document.getElementById('modal_save').addEventListener('click', async () => {
         return;
     }
 
+    const urlInput = document.getElementById('m_url');
+    const fromListing = !!editingApp?.listingId;
+    const url = fromListing ? editingApp.url : normalizeUrlInput(urlInput.value);
+    const linkOptional = !!editingApp && !editingApp.url && !fromListing;
+
+    if (!url && !linkOptional) {
+        await showAlert('Paste the link to the job posting. It’s required so the leaderboard only counts real applications.', 'Listing link required');
+        urlInput.focus();
+        return;
+    }
+
+    // Only check new or changed links: a posting that closed after you applied
+    // shouldn't stop you from updating its status.
+    if (url && !fromListing && url !== (editingApp?.url || '')) {
+        const saveBtn = document.getElementById('modal_save');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Checking link…';
+        let result;
+        try {
+            [result] = await verifyLinks([url]);
+        } catch (_) {
+            await showAlert('We couldn’t check the link right now. Check your connection and try again.', 'Link check failed');
+            return;
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save';
+        }
+        if (linkBlocked(result)) {
+            await showAlert(result.reason, 'That link didn’t check out');
+            urlInput.focus();
+            return;
+        }
+    }
+
     const fields = {
+        url: url || '',
         position,
         company,
         location: document.getElementById('m_location').value.trim(),
@@ -723,10 +834,12 @@ const IMPORT_HEADER_ALIASES = {
     date_applied: ['date', 'date applied', 'applied', 'application date', 'applied on', 'dateapplied'],
     status:       ['status', 'stage', 'result', 'outcome'],
     notes:        ['notes', 'note', 'comments', 'comment'],
+    url:          ['link', 'url', 'listing', 'listing link', 'listing url', 'job link', 'job url',
+                   'posting link', 'posting url', 'job posting link', 'application link', 'link to posting'],
 };
 
 // Positional order assumed when the pasted data has no recognizable header row.
-const IMPORT_POSITIONAL = ['position', 'company', 'location', 'pay', 'date_applied', 'status', 'notes'];
+const IMPORT_POSITIONAL = ['position', 'company', 'location', 'pay', 'date_applied', 'status', 'notes', 'url'];
 
 // Maps a free-text status onto our known set; defaults to 'Pending'.
 function normalizeImportStatus(raw) {
@@ -827,7 +940,7 @@ function parseImport(text) {
     const dataRows = headerMap ? rows.slice(headerIdx + 1) : rows;
     result.headerDetected = !!headerMap;
 
-    const FIELDS = ['position', 'company', 'location', 'pay', 'date_applied', 'status', 'notes'];
+    const FIELDS = ['position', 'company', 'location', 'pay', 'date_applied', 'status', 'notes', 'url'];
 
     for (const cells of dataRows) {
         const vals = {};
@@ -851,6 +964,8 @@ function parseImport(text) {
             date_applied: normalizeImportDate(vals.date_applied),
             status:       normalizeImportStatus(vals.status),
             notes:        vals.notes,
+            // Filler like "N/A", "-", "TBD" (nothing with a dot in it) means no link.
+            url:          vals.url.includes('.') ? normalizeUrlInput(vals.url) : '',
         };
         applyInterviewMilestone(entry);
         result.entries.push(entry);
@@ -865,7 +980,11 @@ function openImportModal() {
     importFileText = '';
     document.getElementById('import_file').value = '';
     document.getElementById('import_preview').textContent = '';
-    document.getElementById('import_confirm').disabled = true;
+    document.getElementById('import_notice').hidden = true;
+    document.getElementById('import_nolinks').hidden = true;
+    const confirmBtn = document.getElementById('import_confirm');
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Import';
     document.getElementById('import_overlay').style.display = 'flex';
 }
 
@@ -873,25 +992,43 @@ function closeImportModal() {
     document.getElementById('import_overlay').style.display = 'none';
 }
 
-// Live preview: count of importable rows + a small sample.
+// Live preview: count of importable rows + a small sample. Rows with links import
+// through the main button; if any lack a link, a separate "without links" button
+// appears with a note that those won't count on the leaderboard.
 function renderImportPreview() {
     const text = importFileText;
     const preview = document.getElementById('import_preview');
+    const notice = document.getElementById('import_notice');
     const confirmBtn = document.getElementById('import_confirm');
+    const noLinksBtn = document.getElementById('import_nolinks');
 
     if (!text.trim()) {
         preview.textContent = '';
+        notice.hidden = true;
+        noLinksBtn.hidden = true;
         confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Import';
         return;
     }
 
     const parsed = parseImport(text);
     const n = parsed.entries.length;
-    confirmBtn.disabled = n === 0;
+    const linked = parsed.entries.filter(e => e.url).length;
+    const unlinked = n - linked;
+
+    confirmBtn.disabled = linked === 0;
+    confirmBtn.textContent = unlinked === 0 ? 'Import' : `Import ${linked} with links`;
+    noLinksBtn.hidden = unlinked === 0;
+    noLinksBtn.textContent = linked === 0 ? 'Import without links' : `Import all ${n}`;
+    notice.hidden = unlinked === 0;
+    notice.textContent = unlinked === 0 ? '' :
+        `${linked === 0 ? 'None of these have' : `${unlinked} of these ${unlinked === 1 ? 'doesn’t have' : 'don’t have'}`} a listing link. ` +
+        'You can still import them. They’ll show as “Imported” in your tracker, but they won’t count on the leaderboard unless you add a link.';
 
     let msg = `${n} application${n === 1 ? '' : 's'} ready to import into “${cycleForNewApp()}”`;
     if (parsed.headerDetected) msg += ' · header detected';
     if (parsed.skipped) msg += ` · ${parsed.skipped} skipped (missing position/company)`;
+    if (n > 0) msg += `\n${linked} with link${linked === 1 ? '' : 's'} · ${unlinked} without`;
 
     if (n > 0) {
         const sample = parsed.entries.slice(0, 3)
@@ -902,23 +1039,68 @@ function renderImportPreview() {
     preview.textContent = msg;
 }
 
-async function doImport() {
+// Imports the parsed rows. includeUnlinked=false imports only rows with a link;
+// true also brings in rows without one (tagged "Imported", don't score). Every link
+// is checked first, and rows whose link doesn't exist are left out and reported.
+async function doImport(includeUnlinked) {
     const parsed = parseImport(importFileText);
-    if (parsed.entries.length === 0) return;
+    let entries = includeUnlinked ? parsed.entries : parsed.entries.filter(e => e.url);
+    if (entries.length === 0) return;
+
+    const preview = document.getElementById('import_preview');
+    const buttons = ['import_confirm', 'import_nolinks', 'import_cancel'].map(id => document.getElementById(id));
+    buttons.forEach(b => { b.disabled = true; });
+
+    // 1. Check every distinct link.
+    const badLinks = [];
+    const uniqueUrls = [...new Set(entries.filter(e => e.url).map(e => e.url))];
+    if (uniqueUrls.length) {
+        preview.textContent = `Checking links… 0 / ${uniqueUrls.length}`;
+        let results;
+        try {
+            results = await verifyLinks(uniqueUrls, (done, total) => {
+                preview.textContent = `Checking links… ${done} / ${total}`;
+            });
+        } catch (_) {
+            buttons.forEach(b => { b.disabled = false; });
+            renderImportPreview();
+            await showAlert('We couldn’t check the links right now. Check your connection and try again.', 'Link check failed');
+            return;
+        }
+        const verdict = new Map(results.map((r, i) => [uniqueUrls[i], r]));
+        entries = entries.filter(e => {
+            const r = e.url && verdict.get(e.url);
+            if (r && linkBlocked(r)) { badLinks.push({ entry: e, reason: r.reason }); return false; }
+            return true;
+        });
+    }
+    buttons.forEach(b => { b.disabled = false; });
+
+    const skippedNote = badLinks.length
+        ? `\n\nLeft out ${badLinks.length} row${badLinks.length === 1 ? '' : 's'} whose link didn’t check out:\n` +
+          badLinks.slice(0, 5).map(b => `• ${b.entry.position} — ${b.entry.company}: ${b.reason}`).join('\n') +
+          (badLinks.length > 5 ? `\n…and ${badLinks.length - 5} more` : '') +
+          '\nFix those links in your sheet and import them again.'
+        : '';
+
+    if (entries.length === 0) {
+        renderImportPreview();
+        await showAlert('Nothing was imported.' + skippedNote, 'Import');
+        return;
+    }
 
     // Imported rows land in the folder currently being viewed.
     const importCycle = cycleForNewApp();
-    parsed.entries.forEach(e => { e.cycle = importCycle; });
-
-    const confirmBtn = document.getElementById('import_confirm');
-    confirmBtn.disabled = true;
+    entries.forEach(e => { e.cycle = importCycle; });
+    preview.textContent = `Importing ${entries.length}…`;
 
     let synced = false;
     try {
         const { data: { user } } = await client.auth.getUser();
         if (user) {
-            const payload = parsed.entries.map(e => ({
+            const payload = entries.map(e => ({
                 user_id:           user.id,
+                url:               e.url || null,
                 position:          e.position,
                 company:           e.company,
                 location:          e.location,
@@ -942,14 +1124,17 @@ async function doImport() {
         await loadApplications();
     } else {
         // Logged out or sync failed — keep them locally (no ids).
-        applications = parsed.entries.concat(applications);
+        applications = entries.concat(applications);
         localStorage.setItem('si_applications', JSON.stringify(applications));
         renderTable();
     }
 
+    const noLink = entries.filter(e => !e.url).length;
     await showAlert(
-        `Imported ${parsed.entries.length} application${parsed.entries.length === 1 ? '' : 's'}.` +
-        (parsed.skipped ? ` ${parsed.skipped} row${parsed.skipped === 1 ? '' : 's'} skipped (missing position or company).` : ''),
+        `Imported ${entries.length} application${entries.length === 1 ? '' : 's'}.` +
+        (noLink ? ` ${noLink} without a link ${noLink === 1 ? 'is' : 'are'} marked “Imported” and won’t count on the leaderboard.` : '') +
+        (parsed.skipped ? ` ${parsed.skipped} row${parsed.skipped === 1 ? '' : 's'} skipped (missing position or company).` : '') +
+        skippedNote,
         'Import complete'
     );
 }
@@ -960,7 +1145,8 @@ document.getElementById('import_cancel').addEventListener('click', closeImportMo
 document.getElementById('import_overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('import_overlay')) closeImportModal();
 });
-document.getElementById('import_confirm').addEventListener('click', doImport);
+document.getElementById('import_confirm').addEventListener('click', () => doImport(false));
+document.getElementById('import_nolinks').addEventListener('click', () => doImport(true));
 
 // File picker loads the file's text, then previews it.
 document.getElementById('import_file').addEventListener('change', e => {

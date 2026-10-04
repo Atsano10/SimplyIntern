@@ -303,6 +303,7 @@ body.dark .drawer_footer { border-top-color: #4a3035; }
     font-size: 14px;
     line-height: 1.5;
     color: #4a3035;
+    white-space: pre-line;   /* lets messages use \n for line breaks */
 }
 
 .si_modal_input {

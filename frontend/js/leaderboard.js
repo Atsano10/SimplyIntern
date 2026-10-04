@@ -108,20 +108,17 @@ async function loadYourStanding() {
             document.getElementById('your_username').textContent = '@' + profile.username;
         }
 
-        const { data: apps } = await client
-            .from('applications')
-            .select('status')
-            .eq('user_id', user.id)
-            .eq('cycle', CURRENT_CYCLE);   // leaderboard counts only the current cycle
-
-        const rejected = (apps || []).filter(a => a.status === 'Rejected').length;
-        const pending  = (apps || []).filter(a => ['Pending', 'Applied', 'Interview'].includes(a.status)).length;
-        const score    = rejected + pending;
+        // Scored by the database with the same rules as the board (current cycle,
+        // verified links only, each listing once, interviews count as pending),
+        // so this can't drift from what everyone else sees.
+        const { data, error } = await client.rpc('my_leaderboard_score');
+        if (error || !data || !data[0]) return;
+        const { rejected, pending, score } = data[0];
 
         document.getElementById('your_score').textContent = score;
 
         document.querySelector('.standing_sub').textContent = score === 0
-            ? 'Start tracking applications to appear on the board.'
+            ? 'Track applications with a listing link to appear on the board.'
             : `${rejected} rejected · ${pending} pending — keep grinding`;
     } catch (_) {}
 }

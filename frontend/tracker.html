@@ -5,11 +5,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tracker — SimplyIntern</title>
-    <link rel="stylesheet" href="css/styles.css?v=5" />
+    <link rel="stylesheet" href="css/styles.css?v=6" />
     <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16.png" />
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png" />
-    <link rel="stylesheet" href="css/tracker.css?v=5" />
+    <link rel="stylesheet" href="css/tracker.css?v=6" />
     <script src="js/config.js"></script>
     <script src="js/util.js?v=5"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -128,6 +128,11 @@
             <label>Company</label>
             <input type="text" id="m_company" placeholder="e.g. Google" />
           </div>
+          <div class="form_group">
+            <label for="m_url">Listing Link <span class="required_mark" id="m_url_required">*</span></label>
+            <input type="url" id="m_url" placeholder="https://… link to the job posting" autocomplete="off" />
+            <p class="field_hint" id="m_url_hint">We check that the posting exists. Only apps with a real link count on the leaderboard.</p>
+          </div>
           <div class="form_row">
             <div class="form_group">
               <label>Location</label>
@@ -182,12 +187,15 @@
             Upload a CSV from your spreadsheet (in Google Sheets: <code>File → Download → Comma-separated values (.csv)</code>).
             Your sheet just needs a header row naming the columns somewhere near the top — e.g. a <code>Position</code> and a <code>Company</code> column.
             Column order, extra columns, and blank spacer rows are all fine. <strong>Position</strong> and <strong>Company</strong> are required.
+            Add a <code>Link</code> column with each job posting's URL. We check that every link exists, and only linked applications count on the leaderboard.
           </p>
           <input type="file" id="import_file" accept=".csv,.tsv,.txt" class="import_file" />
           <div class="import_preview" id="import_preview"></div>
+          <div class="import_notice" id="import_notice" hidden></div>
         </div>
         <div class="modal_footer">
           <button class="modal_cancel" id="import_cancel">Cancel</button>
+          <button class="modal_secondary" id="import_nolinks" hidden>Import without links</button>
           <button class="modal_save" id="import_confirm" disabled>Import</button>
         </div>
       </div>
@@ -195,6 +203,6 @@
 
     <script src="js/auth.js?v=6"></script>
     <script src="js/nav.js?v=5"></script>
-    <script src="js/tracker.js?v=5"></script>
+    <script src="js/tracker.js?v=6"></script>
   </body>
 </html>
