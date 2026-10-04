@@ -88,3 +88,90 @@ export function parseGithubAge(raw: string | undefined, now: Date = new Date()):
 
   return null;
 }
+
+// zapply's locations need a little help before normalizeGreenhouseLocation:
+//   "El Segundo, California, United..."  (cut off)   -> "El Segundo, California"
+//   "Mountain View, CA, USA"                          -> "Mountain View, CA"
+//   "US, Oregon, Hillsboro"           (reversed)      -> "Hillsboro, Oregon"
+export function cleanZapplyLocation(raw: string): string {
+  let s = raw.trim().replace(/,\s*[^,]*(\.\.\.|…)$/, '');
+  s = s.replace(/,\s*(USA|U\.S\.A\.?|US|U\.S\.)$/i, '');
+  const reversed = s.match(/^(?:US|USA|United States),\s*([^,]+),\s*([^,]+)$/i);
+  if (reversed) s = `${reversed[2]}, ${reversed[1]}`;
+  return s.trim();
+}
+
+// Tracking params that differ between lists for the SAME posting (Simplify adds
+// ?utm_source=Simplify&ref=Simplify, vanshb03 adds its own utm_source, ...).
+const TRACKING_PARAM = /^(utm_.*|ref|referrer|source|src|gh_src|trk|refid|trackingid|lever-source|lever-origin|fbclid|gclid)$/i;
+
+// Key used to spot the same posting across sources: host without www, path without a
+// trailing slash, and the query minus tracking params. The stored URL is unchanged.
+export function dedupeKey(url: string): string {
+  try {
+    const u = new URL(url);
+    const params = [...u.searchParams].filter(([k]) => !TRACKING_PARAM.test(k))
+      .sort(([a], [b]) => a.localeCompare(b));
+    const query = params.length ? '?' + new URLSearchParams(params).toString() : '';
+    return u.hostname.toLowerCase().replace(/^www\./, '') + u.pathname.replace(/\/+$/, '') + query;
+  } catch {
+    return url;
+  }
+}
+
+// Removes tracking/referral params from a URL we display (e.g. "?ref=30daysofcoding").
+export function stripTrackingParams(url: string): string {
+  try {
+    const u = new URL(url);
+    for (const k of [...u.searchParams.keys()]) if (TRACKING_PARAM.test(k)) u.searchParams.delete(k);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+// Turns the open-source list's money column into the pay label shown on Search.
+// The column is called Stipend, Rewards, or Cost depending on the table — and "Paid"
+// means opposite things: a paid stipend vs. tuition the student pays (bootcamps).
+export function programPay(column: string, value: string): string {
+  const col = column.toLowerCase();
+  const v = value.trim();
+  if (col.includes('cost')) {
+    if (/free/i.test(v)) return 'Unpaid (free program)';
+    return /^paid$/i.test(v) ? 'Tuition required' : `Tuition: ${v}`;
+  }
+  if (/\b(yes|stipend|paid)\b/i.test(v)) return 'Paid stipend';
+  if (/grant/i.test(v)) return 'Grant';
+  if (/cash|prize\s*pool|[$₹€£]|\d+\s*k\b/i.test(v)) return 'Cash prizes';
+  return 'Unpaid';
+}
+
+// Finds which column holds what in a markdown table from its header row, since each
+// list orders them differently (zapply: Company | Role | Location | Posted | Visa | Apply).
+// Returns null if this isn't a job table.
+export interface PipeColumns { company: number; role: number; location: number; link: number; date: number }
+export function mapPipeColumns(headerCells: string[]): PipeColumns | null {
+  const names = headerCells.map(c => c.replace(/[*_`]/g, '').trim().toLowerCase());
+  const find = (re: RegExp) => names.findIndex(n => re.test(n));
+  const cols = {
+    company:  find(/^(company|employer|organization)$/),
+    role:     find(/^(role|position|title|job|job title)$/),
+    location: find(/^(location|locations)$/),
+    link:     find(/^(apply|application|link|links|application\/link|posting)$/),
+    date:     find(/^(date posted|posted|age|date)$/),
+  };
+  return cols.company >= 0 && cols.role >= 0 && cols.link >= 0 ? cols : null;
+}
+
+// Runs fn over items with at most `limit` in flight, keeping input order.
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  }));
+  return out;
+}

@@ -1,5 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
-import { cleanCellText, cleanCompanyName, parseGithubAge, timingSafeEqual } from './helpers.ts';
+import {
+  cleanCellText, cleanCompanyName, cleanZapplyLocation, dedupeKey, mapLimit, mapPipeColumns,
+  parseGithubAge, programPay, stripTrackingParams, timingSafeEqual,
+} from './helpers.ts';
 
 // Shape of a job listing as stored in the DB
 interface Listing {
@@ -90,7 +93,7 @@ function normalizeOnePart(part: string): string {
 // Entry point for GitHub locations.
 // Some repos use multi-location HTML cells like <details><summary>3 locations</summary>...<br>...</details>
 // I strip the tags, split on <br>, normalize each part, and join them with " / ".
-function normalizeLocation(raw: string): string | null {
+export function normalizeLocation(raw: string): string | null {
   if (!raw) return null;
   const detagged = raw
     .replace(/<summary>[\s\S]*?<\/summary>/gi, '')   // drop the "N locations" label
@@ -173,7 +176,7 @@ const KNOWN_INTL_CITIES: Record<string, string> = {
 // Greenhouse location strings are all over the place — companies enter whatever they want.
 // This function handles every weird format I've seen and turns it into a clean
 // "City, ST" (US) or "City, Country" (international) string.
-function normalizeGreenhouseLocation(raw: string | null): string | null {
+export function normalizeGreenhouseLocation(raw: string | null): string | null {
   if (!raw) return null;
   const s = raw.trim();
   if (!s) return null;
@@ -351,11 +354,25 @@ async function fetchGreenhouse(company: string): Promise<Listing[]> {
 
 // GitHub
 
-// Community-maintained repos that track active internship listings.
-// SimplifyJobs uses an HTML table format; vanshb03 uses the older markdown pipe table format.
-const GITHUB_REPOS = [
-  { owner: 'SimplifyJobs', repo: 'Summer2026-Internships' },
-  { owner: 'vanshb03',     repo: 'Summer2027-Internships' },
+// Community-maintained repos that track internships. Order matters: when two lists
+// have the same posting, the earlier one's copy is kept (see dedupeKey).
+//   SimplifyJobs  HTML table (the biggest, most active list)
+//   vanshb03      markdown table: Company | Role | Location | Application/Link | Date Posted
+//   zapplyjobs    markdown table: Company | Role | Location | Posted | Visa | Apply — links
+//                 go through zapply.jobs redirects, resolved to the real posting below
+//   deepanshu1422 open-source programs, contests, and bootcamps (not job postings) —
+//                 see parseProgramTables
+interface GithubRepo {
+  owner: string;
+  repo: string;
+  kind?: 'jobs' | 'programs';
+  messyLocations?: boolean;   // run locations through the Greenhouse cleaner
+}
+const GITHUB_REPOS: GithubRepo[] = [
+  { owner: 'SimplifyJobs',  repo: 'Summer2027-Internships' },
+  { owner: 'vanshb03',      repo: 'Summer2027-Internships' },
+  { owner: 'zapplyjobs',    repo: 'Internships-2027', messyLocations: true },
+  { owner: 'deepanshu1422', repo: 'List-Of-Open-Source-Internships-Programs', kind: 'programs' },
 ];
 
 // Parses the HTML <table> format that SimplifyJobs switched to.
@@ -405,31 +422,38 @@ function parseHtmlTable(content: string): Listing[] {
   return jobs;
 }
 
-// Parses the older markdown pipe-table format that some repos still use
-function parsePipeTable(content: string): Listing[] {
-  const lines = content.split('\n');
+// "| a | b |" -> ["a", "b"], keeping empty cells so columns don't shift (zapply's
+// Visa column is often blank). A missing closing pipe doesn't drop the last cell.
+function splitRow(line: string): string[] {
+  const parts = line.trim().split('|').slice(1);
+  if (line.trim().endsWith('|')) parts.pop();
+  return parts.map(c => c.trim());
+}
+
+// Parses markdown pipe tables. Columns are found from each table's header row
+// (mapPipeColumns), since lists order them differently; tables that aren't job tables
+// are skipped.
+function parsePipeTable(content: string, messyLocations = false): Listing[] {
   const jobs: Listing[] = [];
+  let cols: ReturnType<typeof mapPipeColumns> = null;
   let rowsInTable = 0;
   let lastCompany = '';
 
-  for (const line of lines) {
-    if (!line.trim().startsWith('|')) { rowsInTable = 0; continue; }
+  for (const line of content.split('\n')) {
+    if (!line.trim().startsWith('|')) { rowsInTable = 0; cols = null; continue; }
     rowsInTable++;
-    if (rowsInTable <= 2) continue; // skip header row and separator
+    const cells = splitRow(line);
+    if (rowsInTable === 1) { cols = mapPipeColumns(cells); continue; }   // header row
+    if (rowsInTable === 2 || !cols) continue;                            // separator / not a job table
 
-    const cols = line.split('|').map(c => c.trim()).filter(Boolean);
-    if (cols.length < 4) continue;
-
-    const [companyRaw, roleRaw, locationRaw, linkCol] = cols;
-    const dateCol = cols[4]; // trailing Date-Posted/Age column, when present
-
-    const mdLink   = linkCol.match(/\[.*?\]\((https?:\/\/[^)]+)\)/);
+    const linkCol  = cells[cols.link] ?? '';
+    const mdLink   = linkCol.match(/\[.*?\]\((https?:\/\/[^)\s]+)\)/);
     const htmlLink = linkCol.match(/href="(https?:\/\/[^"]+)"/);
     const url = mdLink?.[1] ?? htmlLink?.[1];
     if (!url) continue;
 
-    const role = cleanCellText(roleRaw.replace(/[*_`[\]]/g, ''));
-    const companyClean = cleanCellText(companyRaw.replace(/[*_`[\]]/g, ''));
+    const role = cleanCellText((cells[cols.role] ?? '').replace(/[*_`[\]]/g, ''));
+    const companyClean = cleanCellText((cells[cols.company] ?? '').replace(/[*_`[\]]/g, ''));
     let company: string;
     if (companyClean === '↳') {
       if (!lastCompany) continue;
@@ -439,23 +463,91 @@ function parsePipeTable(content: string): Listing[] {
       if (company) lastCompany = company;
     }
 
-    const location = normalizeLocation(locationRaw.replace(/[*_`[\]]/g, '').trim());
+    const locationRaw = cols.location >= 0 ? (cells[cols.location] ?? '').replace(/[*_`[\]]/g, '').trim() : '';
+    const location = messyLocations
+      ? normalizeGreenhouseLocation(cleanZapplyLocation(locationRaw))
+      : normalizeLocation(locationRaw);
     if (!role || !company || !isInternship(role)) continue;
 
     jobs.push({
       title: role, company, location, pay: null,
       type: getType(role), url, source: 'github',
-      posted_at: parseGithubAge(dateCol), updated_at: new Date().toISOString(),
+      posted_at: parseGithubAge(cols.date >= 0 ? cells[cols.date] : undefined), updated_at: new Date().toISOString(),
     });
   }
   return jobs;
 }
 
+// deepanshu1422's list of open-source programs, contests, and bootcamps. Every table
+// starts with a "Name" column ([Program](link)) followed by a money column (Stipend /
+// Rewards / Cost), which becomes the pay label shown on Search ("Unpaid", "Paid
+// stipend", "Tuition: ..."). The section heading becomes the "company" line. These are
+// standing programs, not dated postings, so there's no posted date and type is 'program'.
+function parseProgramTables(content: string): Listing[] {
+  const programs: Listing[] = [];
+  let section = '';
+  let moneyCol = '';
+  let rowsInTable = 0;
+
+  for (const line of content.split('\n')) {
+    const heading = line.match(/^#{2,3}\s+(.+)$/);
+    if (heading) { section = cleanCellText(heading[1]).replace(/^[^A-Za-z0-9]+/, ''); continue; }
+    if (!line.trim().startsWith('|')) { rowsInTable = 0; moneyCol = ''; continue; }
+    rowsInTable++;
+    const cells = splitRow(line);
+    if (rowsInTable === 1) {
+      moneyCol = cells[0]?.toLowerCase() === 'name' ? (cells[1] ?? '') : '';
+      continue;
+    }
+    if (rowsInTable === 2 || !moneyCol) continue;
+
+    const link = cells[0]?.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/);
+    if (!link) continue;
+    programs.push({
+      title:      cleanCellText(link[1]),
+      company:    section || 'Open Source Program',
+      location:   'Remote',
+      pay:        programPay(moneyCol, cells[1] ?? ''),
+      type:       'program',
+      url:        stripTrackingParams(link[2]),   // e.g. drops "?ref=30daysofcoding"
+      source:     'github',
+      posted_at:  null,
+      updated_at: new Date().toISOString(),
+    });
+  }
+  return programs;
+}
+
+// zapply links (zapply.jobs/l/d/...) are redirects to the real posting. Following
+// them gives Search a direct link and lets dedupeKey match the posting against the
+// other lists. Returns:
+//   - the real posting URL, when the redirect leads off zapply
+//   - null, when zapply bounces to its own job board instead — the posting is gone
+//     from zapply even though it's still in their README, so the listing is dropped
+//   - the original link, if zapply can't be reached (no way to tell; it may still work)
+async function resolveRedirectLink(url: string): Promise<string | null> {
+  let current = url;
+  try {
+    for (let hop = 0; hop < 4; hop++) {
+      const res = await fetch(current, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(8000) });
+      await res.body?.cancel();
+      const location = res.headers.get('location');
+      if (res.status < 300 || res.status >= 400 || !location) break;
+      current = new URL(location, current).toString();
+      const u = new URL(current);
+      if (!/(^|\.)zapply\.jobs$/.test(u.hostname)) return current;
+      if (!u.pathname.startsWith('/l/')) return null;   // sent to zapply's board: expired
+    }
+  } catch { /* unreachable — keep the original */ }
+  return url;
+}
+
 // Auto-detects which format the README uses and calls the right parser
-function parseGithubReadme(content: string): Listing[] {
+function parseGithubReadme(content: string, repo: GithubRepo): Listing[] {
+  if (repo.kind === 'programs') return parseProgramTables(content);
   return /<table[\s>]/i.test(content)
     ? parseHtmlTable(content)
-    : parsePipeTable(content);
+    : parsePipeTable(content, repo.messyLocations);
 }
 
 // Fetches the README from a GitHub repo, trying dev → main → master in order.
@@ -466,7 +558,8 @@ function parseGithubReadme(content: string): Listing[] {
 // 60-req/hr limit, so a token buys nothing. Worse, an invalid/expired token makes
 // raw.githubusercontent.com return 404 for every branch, which silently killed all
 // GitHub ingestion (the catch swallows it) and left the DB Greenhouse-only.
-async function fetchGithubRepo(owner: string, repo: string): Promise<Listing[]> {
+async function fetchGithubRepo(gh: GithubRepo): Promise<Listing[]> {
+  const { owner, repo } = gh;
   const headers: Record<string, string> = { 'User-Agent': 'SimplyIntern/1.0' };
 
   for (const branch of ['dev', 'main', 'master']) {
@@ -476,8 +569,15 @@ async function fetchGithubRepo(owner: string, repo: string): Promise<Listing[]> 
         { headers, signal: AbortSignal.timeout(10000) }
       );
       if (!res.ok) continue;
-      const jobs = parseGithubReadme(await res.text());
-      if (jobs.length > 0) return jobs;
+      const jobs = parseGithubReadme(await res.text(), gh);
+      if (jobs.length === 0) continue;
+      // Swap redirect links for the real posting URL (8 at a time); drop expired ones.
+      const resolved = await mapLimit(jobs, 8, async (j): Promise<Listing | null> => {
+        if (!/(^|\.)zapply\.jobs$/.test(new URL(j.url).hostname)) return j;
+        const url = await resolveRedirectLink(j.url);
+        return url ? { ...j, url } : null;
+      });
+      return resolved.filter((j): j is Listing => j !== null);
     } catch {
       continue;
     }
@@ -518,7 +618,7 @@ Deno.serve(async (req: Request) => {
   // Fetch all sources in parallel to keep the function fast
   const [ghResults, gitResults] = await Promise.all([
     Promise.all(GREENHOUSE_COMPANIES.map(fetchGreenhouse)),
-    Promise.all(GITHUB_REPOS.map(({ owner, repo }) => fetchGithubRepo(owner, repo))),
+    Promise.all(GITHUB_REPOS.map(fetchGithubRepo)),
   ]);
 
   const allJobs: Listing[] = [
@@ -526,11 +626,14 @@ Deno.serve(async (req: Request) => {
     ...gitResults.flat(),
   ];
 
-  // Deduplicate by URL so the same listing from two sources doesn't appear twice
+  // Deduplicate so the same posting from two sources appears once. Matching ignores
+  // tracking params and www/trailing-slash differences (dedupeKey); the first source
+  // in the list wins (Greenhouse, then the GitHub lists in GITHUB_REPOS order).
   const seen = new Set<string>();
   const unique = allJobs.filter(j => {
-    if (seen.has(j.url)) return false;
-    seen.add(j.url);
+    const key = dedupeKey(j.url);
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   }).map(j => ({
     // Safety net: one broken half-emoji anywhere makes Postgres reject the WHOLE batch

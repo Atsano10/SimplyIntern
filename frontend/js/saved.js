@@ -15,22 +15,8 @@ function toSavedEntry(job) {
     url:       job.url || '',
     pay:       job.pay || '',
     posted_at: job.posted_at || null,
+    type:      job.type || null,
   };
-}
-
-// Converts a date string into something readable like "Posted 3 days ago".
-function timeAgo(dateStr) {
-  if (!dateStr) return 'Recently posted';
-  const then = new Date(dateStr);
-  if (isNaN(then.getTime())) return 'Recently posted';
-  const days = Math.floor((Date.now() - then.getTime()) / 86400000);
-  if (days <= 0)  return 'Posted today';
-  if (days === 1) return 'Posted yesterday';
-  if (days < 7)   return `Posted ${days} days ago`;
-  if (days < 14)  return 'Posted 1 week ago';
-  if (days < 30)  return `Posted ${Math.floor(days / 7)} weeks ago`;
-  if (days < 60)  return 'Posted 1 month ago';
-  return `Posted ${Math.floor(days / 30)} months ago`;
 }
 
 async function loadSaved() {
@@ -80,13 +66,14 @@ function renderSaved() {
         <div class="info_title">${esc(job.title)}</div>
         <div class="info_company">${esc(job.company)}</div>
         <div class="info_location">${esc(job.location || 'Location not listed')}</div>
+        ${payBadgeHtml(job.pay)}
       </div>
       <div class="center_jobs">
         <button class="apply_btn" data-listing-id="${esc(job.listingId || '')}">Mark Applied</button>
         <button class="save_btn saved" data-listing-id="${esc(job.listingId || '')}">✕ Remove</button>
       </div>
       <div class="right_jobs">
-        <div class="info_rate">${esc(timeAgo(job.posted_at))}</div>
+        <div class="info_rate">${esc(postedLabel(job))}</div>
         <a class="info_link" href="${esc(job.url)}" target="_blank" rel="noopener noreferrer">View Listing</a>
       </div>
     `;

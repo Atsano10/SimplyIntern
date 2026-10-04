@@ -382,6 +382,19 @@ body {
     color: #888;
 }
 
+/* Pay badge: green = paid, amber = unpaid, red = the student pays tuition */
+.info_pay {
+    align-self: flex-start;
+    margin-top: 4px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.info_pay.paid    { background: #d1f3e0; color: #1a6b3a; }
+.info_pay.unpaid  { background: #fff3cd; color: #856404; }
+.info_pay.tuition { background: #f8d7da; color: #842029; }
+
 .center_jobs {
     display: flex;
     flex-direction: column;
@@ -555,6 +568,9 @@ body.dark .jobs {
 body.dark .info_title { color: #f0e8ea; }
 body.dark .info_company { color: #eeb9c2; }
 body.dark .info_location { color: #9a8284; }
+body.dark .info_pay.paid    { background: #163a26; color: #7fd8a4; }
+body.dark .info_pay.unpaid  { background: #2a200a; color: #ffc107; }
+body.dark .info_pay.tuition { background: #3a1a1e; color: #f08a96; }
 body.dark .info_rate { color: #f0e8ea; }
 body.dark .info_link { color: #eeb9c2; }
 body.dark .info_link:hover { color: #f0e8ea; }

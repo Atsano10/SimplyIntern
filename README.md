@@ -24,8 +24,9 @@ A clean, automated internship aggregator that pulls listings from multiple sourc
 
 ## Data Sources
 
-- **Greenhouse** — Public job boards from 100+ companies (Stripe, Figma, Notion, Discord, Lyft, etc.)
-- **GitHub** — [SimplifyJobs/Summer2026-Internships](https://github.com/SimplifyJobs/Summer2026-Internships) and [vanshb03/Summer2027-Internships](https://github.com/vanshb03/Summer2027-Internships)
+- **Greenhouse** — Public job boards from 65 companies (Stripe, Figma, Databricks, Coinbase, Lyft, etc.)
+- **GitHub internship lists** — [SimplifyJobs/Summer2027-Internships](https://github.com/SimplifyJobs/Summer2027-Internships), [vanshb03/Summer2027-Internships](https://github.com/vanshb03/Summer2027-Internships), and [zapplyjobs/Internships-2027](https://github.com/zapplyjobs/Internships-2027)
+- **Open-source programs** — [deepanshu1422/List-Of-Open-Source-Internships-Programs](https://github.com/deepanshu1422/List-Of-Open-Source-Internships-Programs) (GSoC, Outreachy, MLH Fellowship, contests, bootcamps), each labeled Paid stipend / Unpaid / Tuition on Search
 
 Listings are deduplicated by URL and location is normalized to a consistent `City, ST` / `City, Country` format across all sources.
 

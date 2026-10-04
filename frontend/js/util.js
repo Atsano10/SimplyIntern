@@ -145,3 +145,34 @@ function showPrompt({ title, message, placeholder = '', confirmText = 'OK', canc
 // keep it in sync with the SQL literal in the latest cycles migration.
 const PREDEFINED_CYCLES = ['2027 Summer', '2027 Spring', '2026 Winter'];
 const CURRENT_CYCLE = '2027 Summer';
+
+// ── Listing cards (Search + Saved) ────────────────────────────────────────────
+
+// Converts a date string into something readable like "Posted 3 days ago"
+function timeAgo(dateStr) {
+  if (!dateStr) return 'Recently posted';
+  const then = new Date(dateStr);
+  if (isNaN(then.getTime())) return 'Recently posted';
+  const days = Math.floor((Date.now() - then.getTime()) / 86400000);
+  if (days <= 0)  return 'Posted today';
+  if (days === 1) return 'Posted yesterday';
+  if (days < 7)   return `Posted ${days} days ago`;
+  if (days < 14)  return 'Posted 1 week ago';
+  if (days < 30)  return `Posted ${Math.floor(days / 7)} weeks ago`;
+  if (days < 60)  return 'Posted 1 month ago';
+  return `Posted ${Math.floor(days / 30)} months ago`;
+}
+
+// Open-source programs (type 'program') are standing programs with no posting date.
+function postedLabel(job) {
+  if (!job.posted_at && job.type === 'program') return 'Ongoing program';
+  return timeAgo(job.posted_at);
+}
+
+// Pay badge for a card, or '' when pay isn't listed. Colored by meaning: Unpaid and
+// tuition (the student pays) are flagged so they don't read as paid internships.
+function payBadgeHtml(pay) {
+  if (!pay) return '';
+  const kind = /^unpaid/i.test(pay) ? 'unpaid' : /^tuition/i.test(pay) ? 'tuition' : 'paid';
+  return `<div class="info_pay ${kind}">${esc(pay)}</div>`;
+}

@@ -1,6 +1,9 @@
 // Run: deno test supabase/functions/daily-refresh
 import { assert, assertEquals } from 'jsr:@std/assert@1';
-import { cleanCellText, cleanCompanyName, parseGithubAge, timingSafeEqual } from './helpers.ts';
+import {
+  cleanCellText, cleanCompanyName, cleanZapplyLocation, dedupeKey, mapPipeColumns, parseGithubAge,
+  programPay, stripTrackingParams, timingSafeEqual,
+} from './helpers.ts';
 
 Deno.test('cleanCompanyName strips suffixes, labels, and symbols', () => {
   const cases: [string, string][] = [
@@ -57,4 +60,48 @@ Deno.test('parseGithubAge: relative ages', () => {
   assertEquals(parseGithubAge('1mo', now), '2026-09-04');
   assertEquals(parseGithubAge('13h', now), '2026-10-03');
   assertEquals(parseGithubAge('<span>5d</span>', now), '2026-09-29');
+});
+
+Deno.test('cleanZapplyLocation', () => {
+  assertEquals(cleanZapplyLocation('El Segundo, California, United...'), 'El Segundo, California');
+  assertEquals(cleanZapplyLocation('Mountain View, CA, USA'), 'Mountain View, CA');
+  assertEquals(cleanZapplyLocation('US, Oregon, Hillsboro'), 'Hillsboro, Oregon');
+  assertEquals(cleanZapplyLocation('Dallas, TX'), 'Dallas, TX');
+});
+
+Deno.test('dedupeKey matches the same posting across lists', () => {
+  const a = 'https://bah.wd1.myworkdayjobs.com/bah_jobs/job/X_R1?utm_source=Simplify&ref=Simplify';
+  const b = 'https://bah.wd1.myworkdayjobs.com/bah_jobs/job/X_R1/?utm_source=github-vansh-ouckah';
+  const c = 'https://www.bah.wd1.myworkdayjobs.com/bah_jobs/job/X_R1';
+  assertEquals(dedupeKey(a), dedupeKey(b));
+  assertEquals(dedupeKey(a), dedupeKey(c));
+  // real ids in the query are kept, so different jobs stay different
+  assert(dedupeKey('https://stripe.com/jobs/search?gh_jid=1') !== dedupeKey('https://stripe.com/jobs/search?gh_jid=2'));
+});
+
+Deno.test('stripTrackingParams', () => {
+  assertEquals(stripTrackingParams('https://masteringbackend.com?ref=30daysofcoding'), 'https://masteringbackend.com/');
+  assertEquals(stripTrackingParams('https://x.com/a?id=5&utm_source=y'), 'https://x.com/a?id=5');
+});
+
+Deno.test('programPay labels money correctly per column', () => {
+  assertEquals(programPay('Stipend', 'Yes'), 'Paid stipend');
+  assertEquals(programPay('Stipend', 'No'), 'Unpaid');
+  assertEquals(programPay('Stipend', 'Grants'), 'Grant');
+  assertEquals(programPay('Rewards', 'Swag'), 'Unpaid');
+  assertEquals(programPay('Rewards', 'Certificates, swag'), 'Unpaid');
+  assertEquals(programPay('Rewards', 'Cash prizes'), 'Cash prizes');
+  assertEquals(programPay('Rewards', 'PrizePool Worth of 20K (Including Swags)'), 'Cash prizes');
+  assertEquals(programPay('Rewards', 'Stipend'), 'Paid stipend');
+  assertEquals(programPay('Cost', 'Paid'), 'Tuition required');             // student pays, NOT a stipend
+  assertEquals(programPay('Cost', 'Income Share Agreement'), 'Tuition: Income Share Agreement');
+  assertEquals(programPay('Cost', 'Free (3 months)'), 'Unpaid (free program)');
+});
+
+Deno.test('mapPipeColumns reads each list\'s header', () => {
+  assertEquals(mapPipeColumns(['Company', 'Role', 'Location', 'Application/Link', 'Date Posted']),
+    { company: 0, role: 1, location: 2, link: 3, date: 4 });
+  assertEquals(mapPipeColumns(['Company', 'Role', 'Location', 'Posted', 'Visa', '**Apply**']),
+    { company: 0, role: 1, location: 2, link: 5, date: 3 });
+  assertEquals(mapPipeColumns(['Name', 'Stipend', 'Timeline']), null);
 });
