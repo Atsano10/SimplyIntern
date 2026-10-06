@@ -318,6 +318,13 @@ body {
     font-size: 15px;
 }
 
+.lb_more {
+    text-align: center;
+    padding: 14px 20px;
+    color: #aaa;
+    font-size: 13px;
+}
+
 /* ── DARK MODE ── */
 body.dark .podium_card {
     background: #2c2022;
@@ -344,7 +351,8 @@ body.dark .col_score strong { color: #f0e8ea; }
 
 body.dark .standing_sub { color: #9a8284; }
 body.dark .score_label { color: #9a8284; }
-body.dark .table_loading { color: #9a8284; }
+body.dark .table_loading,
+body.dark .lb_more { color: #9a8284; }
 
 /* ── MOBILE ── */
 @media (max-width: 640px) {

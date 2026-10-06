@@ -16,14 +16,13 @@ window.addEventListener('pageshow', (e) => {
 });
 
 async function loadLeaderboard() {
-    // Read pre-aggregated scores from the leaderboard_scores view. It exposes
-    // ONLY username + counts (never emails or notes), and the raw profiles/
-    // applications tables are now locked to per-user access.
+    // The top 50 scorers, ranked by the database (leaderboard_top, migration 023).
+    // It exposes ONLY username + counts (never emails or notes), and the raw
+    // profiles/applications tables are locked to per-user access.
     const { data: ranked, error } = await client
-        .from('leaderboard_scores')
-        .select('username, rejected, pending, score')
-        .order('score', { ascending: false })
-        .order('username', { ascending: true });
+        .from('leaderboard_top')
+        .select('rank, username, rejected, pending, score')
+        .order('rank', { ascending: true });
 
     if (error || !ranked) {
         showTableError();
@@ -64,18 +63,21 @@ function renderPodium(ranked) {
     });
 }
 
+// Must match the cap in the leaderboard_top view (migration 023).
+const LEADERBOARD_SIZE = 50;
+
 function renderTable(ranked) {
     const tbody = document.getElementById('lb_tbody');
 
     if (ranked.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5"><div class="table_loading">No users yet.</div></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5"><div class="table_loading">No one on the board yet.</div></td></tr>`;
         return;
     }
 
-    tbody.innerHTML = ranked.map((user, i) => `
+    const rows = ranked.map(user => `
         <tr class="rank_row">
             <td class="col_rank">
-                <span class="rank_num ${i < 3 ? 'top3' : ''}">${i + 1}</span>
+                <span class="rank_num ${user.rank <= 3 ? 'top3' : ''}">${user.rank}</span>
             </td>
             <td class="username_cell">
                 <span class="lb_avatar">${esc(user.username[0].toUpperCase())}</span>
@@ -86,6 +88,12 @@ function renderTable(ranked) {
             <td class="col_score"><strong>${user.score}</strong></td>
         </tr>
     `).join('');
+
+    // The view stops at 50, so a full page means there may be more people below.
+    const more = ranked.length >= LEADERBOARD_SIZE
+        ? `<tr><td colspan="5" class="lb_more">Showing the top ${LEADERBOARD_SIZE} · your rank is below</td></tr>`
+        : '';
+    tbody.innerHTML = rows + more;
 }
 
 function showTableError() {
@@ -100,7 +108,7 @@ async function loadYourStanding() {
 
         const { data: profile } = await client
             .from('profiles')
-            .select('username')
+            .select('username, leaderboard_opt_out')
             .eq('id', user.id)
             .single();
 
@@ -113,12 +121,16 @@ async function loadYourStanding() {
         // so this can't drift from what everyone else sees.
         const { data, error } = await client.rpc('my_leaderboard_score');
         if (error || !data || !data[0]) return;
-        const { rejected, pending, score } = data[0];
+        const { rejected, pending, score, rank } = data[0];
 
         document.getElementById('your_score').textContent = score;
+        // rank is null when you have 0 points or have opted out of the board.
+        document.getElementById('your_rank').textContent = rank ? '#' + rank : '#—';
 
-        document.querySelector('.standing_sub').textContent = score === 0
-            ? 'Track applications with a listing link to appear on the board.'
-            : `${rejected} rejected · ${pending} pending — keep grinding`;
+        let sub;
+        if (profile?.leaderboard_opt_out) sub = 'You’re hidden from the board. Change this in Settings.';
+        else if (score === 0)            sub = 'Track applications with a listing link to appear on the board.';
+        else                             sub = `${rejected} rejected · ${pending} pending — keep grinding`;
+        document.querySelector('.standing_sub').textContent = sub;
     } catch (_) {}
 }
