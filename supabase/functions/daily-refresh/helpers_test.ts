@@ -1,8 +1,8 @@
 // Run: deno test supabase/functions/daily-refresh
 import { assert, assertEquals } from 'jsr:@std/assert@1';
 import {
-  cleanCellText, cleanCompanyName, cleanZapplyLocation, dedupeKey, mapPipeColumns, parseGithubAge,
-  programPay, stripTrackingParams, timingSafeEqual,
+  cleanCellText, cleanCompanyName, cleanZapplyLocation, dedupeKey, greenhousePostedDate, mapPipeColumns,
+  parseGithubAge, programPay, stripTrackingParams, timingSafeEqual,
 } from './helpers.ts';
 
 Deno.test('cleanCompanyName strips suffixes, labels, and symbols', () => {
@@ -104,4 +104,14 @@ Deno.test('mapPipeColumns reads each list\'s header', () => {
   assertEquals(mapPipeColumns(['Company', 'Role', 'Location', 'Posted', 'Visa', '**Apply**']),
     { company: 0, role: 1, location: 2, link: 5, date: 3 });
   assertEquals(mapPipeColumns(['Name', 'Stipend', 'Timeline']), null);
+});
+
+Deno.test('greenhousePostedDate uses first_published, not the last edit', () => {
+  // Real shape from the Robinhood board: posted in May 2025, edited last week.
+  assertEquals(greenhousePostedDate({
+    first_published: '2025-05-08T14:52:01-04:00', updated_at: '2026-10-02T18:48:15-04:00',
+  }), '2025-05-08');
+  assertEquals(greenhousePostedDate({ updated_at: '2026-10-02T18:48:15-04:00' }), '2026-10-02');
+  assertEquals(greenhousePostedDate({ first_published: null, updated_at: null }), null);
+  assertEquals(greenhousePostedDate({}), null);
 });

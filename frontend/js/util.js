@@ -2,14 +2,16 @@
 
 // Escapes strings before inserting them into innerHTML to prevent XSS.
 // Turns HTML-significant characters into harmless display-only equivalents,
-// so user-supplied text is always shown, never executed as markup.
+// so user-supplied text is always shown, never executed as markup. Single quotes are
+// escaped too, so it's also safe inside a single-quoted attribute (title='...').
 function esc(str) {
   if (!str) return '';
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // Styled, CSP-safe replacements for alert()/confirm().
@@ -174,6 +176,20 @@ function showSyncError(message, error) {
 
   banner.append(text, closeBtn);
   document.body.appendChild(banner);
+}
+
+// ── Usernames ────────────────────────────────────────────────────────────────
+// Same rule as the profiles_username_format CHECK in the database (migration 022),
+// which is what actually enforces it. Checking here first just gives a clear message.
+const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,20}$/;
+const USERNAME_RULE = 'Usernames are 3–20 characters: letters, numbers, and underscores only.';
+
+// Turns any string (an email prefix, an old signup name) into a username that passes
+// the rule, leaving room for `suffix`, a number added to dodge a name that's taken.
+function toValidUsername(raw, suffix = '') {
+  let base = String(raw || '').replace(/[^A-Za-z0-9_]/g, '_');
+  if (/^_*$/.test(base)) base = 'user';   // nothing usable was left
+  return (base.slice(0, 20 - suffix.length) + suffix).padEnd(3, '_');
 }
 
 // ── Recruitment cycles ────────────────────────────────────────────────────────

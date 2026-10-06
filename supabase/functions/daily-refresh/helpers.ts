@@ -89,6 +89,18 @@ export function parseGithubAge(raw: string | undefined, now: Date = new Date()):
   return null;
 }
 
+// The date a Greenhouse job was first posted, as YYYY-MM-DD. Uses first_published, not
+// updated_at: updated_at changes every time the company edits the posting, which made
+// months-old jobs look brand new under "Newest" and "Last 7 days". The date is the
+// company's local date, as written in the timestamp. updated_at is only a fallback in
+// case first_published is ever missing.
+export function greenhousePostedDate(
+  job: { first_published?: string | null; updated_at?: string | null },
+): string | null {
+  const raw = job.first_published || job.updated_at;
+  return raw ? raw.split('T')[0] : null;
+}
+
 // zapply's locations need a little help before normalizeGreenhouseLocation:
 //   "El Segundo, California, United..."  (cut off)   -> "El Segundo, California"
 //   "Mountain View, CA, USA"                          -> "Mountain View, CA"

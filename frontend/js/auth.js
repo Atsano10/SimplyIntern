@@ -15,6 +15,10 @@ async function signUp() {
         await showAlert('Please fill in your email, username, and password.', 'Sign up')
         return
     }
+    if (!USERNAME_PATTERN.test(username)) {
+        await showAlert(USERNAME_RULE, 'Sign up')
+        return
+    }
     if (confirmPassword !== password) {
         await showAlert('Passwords do not match!', 'Sign up')
         return
@@ -199,10 +203,12 @@ async function checkSession() {
 // Creates the profile row for a session's user, choosing the username they picked at
 // signup (user_metadata or local stash) and falling back to the email prefix, deduped
 // against existing usernames. Returns true if a profile exists afterward.
+// Every name tried goes through toValidUsername, so the database's format rule can't
+// reject it (e.g. a 25-character email prefix, or a name picked before the rule).
 async function createProfileFor(session) {
-    const base = session.user.user_metadata?.username
+    const base = toValidUsername(session.user.user_metadata?.username
         || localStorage.getItem('si_pending_username')
-        || session.user.email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_')
+        || session.user.email.split('@')[0])
 
     // Try a few username variants. We RETRY on the actual insert, not just the
     // availability check, so a race (name free at check time, taken at insert) still
@@ -210,7 +216,7 @@ async function createProfileFor(session) {
     // "succeed" on a conflict that left the user without a profile (the bug that hid
     // the leaderboard issue for so long).
     for (let attempt = 0; attempt < 6; attempt++) {
-        const username = attempt === 0 ? base : `${base}${attempt}`
+        const username = attempt === 0 ? base : toValidUsername(base, String(attempt))
 
         // Best-effort pre-check so we usually land on the first attempt.
         try {

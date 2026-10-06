@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Username ──
     document.getElementById('save_username_btn').addEventListener('click', async () => {
         const newUsername = document.getElementById('s_username').value.trim();
-        if (!newUsername) return showStatus('username_status', 'Username cannot be empty.', false);
+        if (!USERNAME_PATTERN.test(newUsername)) return showStatus('username_status', USERNAME_RULE, false);
 
         // Safe availability check (profiles is no longer publicly readable).
         // The RPC excludes the caller's own row, so re-saving your own name is ok.

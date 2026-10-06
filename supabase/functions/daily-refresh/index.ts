@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import {
-  cleanCellText, cleanCompanyName, cleanZapplyLocation, dedupeKey, mapLimit, mapPipeColumns,
-  parseGithubAge, programPay, stripTrackingParams, timingSafeEqual,
+  cleanCellText, cleanCompanyName, cleanZapplyLocation, dedupeKey, greenhousePostedDate, mapLimit,
+  mapPipeColumns, parseGithubAge, programPay, stripTrackingParams, timingSafeEqual,
 } from './helpers.ts';
 
 // Shape of a job listing as stored in the DB
@@ -344,7 +344,7 @@ async function fetchGreenhouse(company: string): Promise<Listing[]> {
         type:       getType(j.title),
         url:        j.absolute_url,
         source:     'greenhouse',
-        posted_at:  j.updated_at ? j.updated_at.split('T')[0] : null,
+        posted_at:  greenhousePostedDate(j),
         updated_at: new Date().toISOString(),
       }));
   } catch {

@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="css/settings.css" />
     <script src="js/config.js"></script>
     <script src="js/util.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/vendor/supabase-2.117.2.js"></script>
   </head>
   <body>
     <div class="menu_bar">
@@ -41,7 +41,7 @@
           <div class="settings_field">
             <label>Username</label>
             <div class="settings_inline">
-              <input type="text" id="s_username" placeholder="username" />
+              <input type="text" id="s_username" maxlength="20" placeholder="username" />
               <button id="save_username_btn" class="settings_btn">Save</button>
             </div>
             <span id="username_status" class="settings_status"></span>
