@@ -16,19 +16,15 @@ const TYPE_PATTERNS = {
   'externship': ['externship', 'extern '],
 };
 
-// Filtering runs server-side via the `search_listings` RPC (supabase migration 006),
-// so we fetch ONE page of already-filtered rows instead of pulling the whole table
-// into the browser. The keyword maps above stay here as the single source of truth:
-// we expand the user's selected industries/types into `%keyword%` ILIKE patterns and
-// hand them to the RPC, which does the matching in SQL with trigram indexes.
-//
-// Matching semantics are identical to the previous client-side version:
+// Filtering runs in the database (the search_listings function, latest version in
+// migration 026), so each call returns ONE page of already-filtered rows. The keyword
+// maps above are the single source of truth: selected industries/types are expanded
+// into `%keyword%` ILIKE patterns for the function to match against titles.
 //   keyword  -> every word must match the title, company or location: as text,
-//               an abbreviation (swe, nyc), a word stem, or a close spelling (026)
+//               an abbreviation (swe, nyc), a word stem, or a close spelling
 //   location -> ILIKE ANY(patterns)   industry/type -> title ILIKE ANY(patterns)
 
-// Returns one page of filtered results. Same (filters, offset, limit) signature the
-// search UI already uses for infinite scroll.
+// Returns one page of filtered results (used for the first page and infinite scroll).
 async function fetchJobs(filters = {}, offset = 0, limit = 50) {
   // Expand selected industry/type labels into the title ILIKE patterns the RPC expects.
   const industryPatterns = (filters.industries || [])

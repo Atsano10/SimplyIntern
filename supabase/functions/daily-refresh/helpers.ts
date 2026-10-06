@@ -1,6 +1,27 @@
 // Small pure helpers for daily-refresh, kept out of index.ts so they can be unit
 // tested (helpers_test.ts) without starting the server.
 
+// A job listing as the sources produce it. updated_at is added when it's saved.
+export interface Listing {
+  title:     string;
+  company:   string;
+  location:  string | null;
+  pay:       string | null;
+  type:      string;
+  url:       string;
+  source:    string;
+  posted_at: string | null;
+}
+
+// Whether a listing is an internship, co-op, or externship, from its title.
+// Whole words only, like isInternship: "External Comms Intern" isn't an externship,
+// and "Cooper Labs Intern" isn't a co-op.
+export function getType(title: string): string {
+  if (/\b(co-?ops?|co\s+op)\b/i.test(title)) return 'co-op';
+  if (/\b(externs?|externships?)\b/i.test(title)) return 'externship';
+  return 'internship';
+}
+
 // Greenhouse board names are what the company typed into Greenhouse, so they come with
 // legal suffixes and internal labels ("Rocket Lab Corporation", "Gusto, Inc.",
 // "SanMar- External ", "DEPT®"). This trims them to the name people actually search for.
@@ -129,6 +150,30 @@ export function dedupeKey(url: string): string {
   } catch {
     return url;
   }
+}
+
+// The rows to save: each posting once (matching ignores tracking params and
+// www/trailing-slash differences, see dedupeKey; the first copy in `all` wins), with
+// broken half-emoji removed and updated_at set to `now`.
+// The emoji cleanup is a safety net: one lone surrogate anywhere makes Postgres reject
+// the WHOLE 500-row batch.
+export function prepareListings(all: Listing[], now: string): (Listing & { updated_at: string })[] {
+  const seen = new Set<string>();
+  const noHalves = (s: string) => s.replace(/\p{Cs}/gu, '');
+  return all
+    .filter(j => {
+      const key = dedupeKey(j.url);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map(j => ({
+      ...j,
+      title:      noHalves(j.title),
+      company:    noHalves(j.company),
+      location:   j.location == null ? null : noHalves(j.location),
+      updated_at: now,
+    }));
 }
 
 // Removes tracking/referral params from a URL we display (e.g. "?ref=30daysofcoding").

@@ -1,3 +1,6 @@
+// settings.js — dark mode, leaderboard opt-out, username, password, and account
+// deletion. auth.js guards the page (requireAuth); this file only needs the session.
+
 document.addEventListener('DOMContentLoaded', async () => {
     const { data: { session } } = await client.auth.getSession();
     if (!session) {
@@ -45,8 +48,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const newUsername = document.getElementById('s_username').value.trim();
         if (!USERNAME_PATTERN.test(newUsername)) return showStatus('username_status', USERNAME_RULE, false);
 
-        // Checked by the database (profiles is no longer publicly readable). It ignores
-        // the caller's own row, so re-saving your own name in new capitals is ok.
+        // Checked by the database. It ignores the caller's own row, so re-saving your own
+        // name in new capitals is ok.
         const { data: problem } = await client.rpc('check_username', { p_username: newUsername });
         if (USERNAME_PROBLEMS[problem]) return showStatus('username_status', USERNAME_PROBLEMS[problem], false);
 
@@ -54,14 +57,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             .from('profiles')
             .update({ username: newUsername })
             .eq('id', user.id);
-
         if (error) {
-            // The database rules still apply if a name slips past the check (a race).
-            const msg = error.message || '';
-            const why = msg.includes('profiles_username_key') ? USERNAME_PROBLEMS.taken
-                      : msg.includes('profiles_username_appropriate') ? USERNAME_PROBLEMS.offensive
-                      : 'Failed to update username.';
-            return showStatus('username_status', why, false);
+            return showStatus('username_status', usernameErrorMessage(error) || 'Failed to update username.', false);
         }
         showStatus('username_status', `Username updated to @${newUsername}!`, true);
 
@@ -110,6 +107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 });
 
+// Shows a green (success) or red message under a settings section for 3 seconds.
 function showStatus(id, message, success) {
     const el = document.getElementById(id);
     el.textContent = message;

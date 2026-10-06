@@ -156,12 +156,11 @@ function locExactPatterns(part) {
 
 // Builds the filter options from each distinct location string and how many
 // listings have it, e.g. { "Seattle, WA": 12 } (the listing_locations RPC).
-// Returns { options: [{ value, label, group, count }], patterns: { value: [...] }, unknown: [...] }
+// Returns { options: [{ value, label, group, count }], patterns: { value: [...] } }
 // Groups: 'top' (Remote, United States), 'us' (states), 'intl' (countries).
 function buildLocationIndex(locationCounts) {
   const counts = {};
   const patterns = {};   // bucket -> Set of ILIKE patterns
-  const unknown = new Set();
   const addPatterns = (key, list) => {
     if (!patterns[key]) patterns[key] = new Set();
     list.forEach(p => patterns[key].add(p));
@@ -173,10 +172,7 @@ function buildLocationIndex(locationCounts) {
     loc.split(' / ').forEach(rawPart => {
       const part = rawPart.trim();
       if (!part) return;
-      const partKeys = locClassifyPart(part);
-      if (partKeys.length === 0) unknown.add(part);
-
-      partKeys.forEach(key => {
+      locClassifyPart(part).forEach(key => {
         keys.add(key);
         if (key.startsWith('us:')) keys.add('us');
 
@@ -208,7 +204,6 @@ function buildLocationIndex(locationCounts) {
   const rank = o => (o.value === 'remote' ? 0 : o.value === 'us' ? 1 : 2);
   options.sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label));
 
-  const patternLists = {};
-  Object.keys(patterns).forEach(k => { patternLists[k] = [...patterns[k]]; });
-  return { options, patterns: patternLists, unknown: [...unknown] };
+  const patternLists = Object.fromEntries(Object.entries(patterns).map(([k, set]) => [k, [...set]]));
+  return { options, patterns: patternLists };
 }

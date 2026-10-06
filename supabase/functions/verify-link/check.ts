@@ -166,8 +166,7 @@ async function checkAshby(u: URL): Promise<CheckResult | null> {
     const res = await fetch(`https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(org)}`, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), headers: { 'User-Agent': USER_AGENT },
     });
-    if (res.status === 404) { await res.body?.cancel(); return { status: 'dead', reason: REASONS.notFound, http_status: 404 }; }
-    if (!res.ok) { await res.body?.cancel(); return { status: 'unverifiable', reason: REASONS.unverifiable, http_status: res.status }; }
+    if (!res.ok) { await res.body?.cancel(); return fromStatus(res.status); }   // 404: no such board
     const board = await res.json() as { jobs?: { id: string }[] };
     return (board.jobs || []).some(j => j.id.toLowerCase() === jobId.toLowerCase())
       ? { status: 'ok', reason: REASONS.ok, http_status: 200 }

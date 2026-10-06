@@ -82,8 +82,8 @@ Deno.serve(async (req: Request) => {
         const { u, i } = pending[k];
         if (!row.url_normalized) { results[i] = { status: 'invalid', reason: 'That doesn’t look like a job link.' }; return; }
         normalized.set(i, row.url_normalized);
-        if (row.in_listings) results[i] = { status: 'ok', reason: 'Link verified.' };
-        else if (row.cached_status === 'ok') results[i] = { status: 'ok', reason: 'Link verified.' };
+        // One of our own listings, or already verified: no need to fetch it again.
+        if (row.in_listings || row.cached_status === 'ok') results[i] = { status: 'ok', reason: 'Link verified.' };
         else toFetch.push({ i, u });   // never checked, dead before, or unverifiable before (retry)
       });
 

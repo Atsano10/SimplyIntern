@@ -23,6 +23,13 @@ const msState = {
   jobTypes:   new Set(),
 };
 
+// The three multi-select filters: element id prefix, msState key, and URL parameter.
+const MS_FILTERS = [
+  { id: 'ms_location', key: 'locations',  param: 'loc'  },
+  { id: 'ms_industry', key: 'industries', param: 'ind'  },
+  { id: 'ms_type',     key: 'jobTypes',   param: 'type' },
+];
+
 // Maps each location option value (e.g. 'us:CA') to the DB ILIKE patterns that select it.
 // Built by buildLocationIndex() in js/locations.js.
 let locationPatternMap = {};
@@ -93,28 +100,28 @@ function msRefresh(id, stateKey) {
   }
 }
 
+function closeFilterPanels() {
+  document.querySelectorAll('.filter_multi_panel.open, .filter_multi_btn.open')
+    .forEach(el => el.classList.remove('open'));
+}
+
 // Opens or closes a filter panel, closing any other open ones first
 function msToggle(id) {
   const panel  = document.getElementById(id + '_panel');
-  const btn    = document.getElementById(id + '_btn');
   const isOpen = panel.classList.contains('open');
-  document.querySelectorAll('.filter_multi_panel.open').forEach(p => p.classList.remove('open'));
-  document.querySelectorAll('.filter_multi_btn.open').forEach(b => b.classList.remove('open'));
+  closeFilterPanels();
   if (!isOpen) {
     panel.classList.add('open');
-    btn.classList.add('open');
+    document.getElementById(id + '_btn').classList.add('open');
   }
 }
 
 // Close any open filter panel when the user clicks outside of it
 document.addEventListener('click', e => {
-  if (!e.target.closest('.filter_multi')) {
-    document.querySelectorAll('.filter_multi_panel.open').forEach(p => p.classList.remove('open'));
-    document.querySelectorAll('.filter_multi_btn.open').forEach(b => b.classList.remove('open'));
-  }
+  if (!e.target.closest('.filter_multi')) closeFilterPanels();
 });
 
-// Location filter
+// ── Location filter ──────────────────────────────────────────────────────────
 
 // Every distinct listing location with its listing count, in one call
 // (migration 020) instead of paging through the whole listings table.
@@ -191,17 +198,15 @@ async function loadLocationFilter() {
   });
 }
 
-// Search
+// ── Search ───────────────────────────────────────────────────────────────────
 
 document.getElementById('search_btn').addEventListener('click', () => performSearch());
 document.getElementById('search_input').addEventListener('keydown', e => {
   if (e.key === 'Enter') performSearch();
 });
 
-// Filter buttons (moved off inline onclick handlers for a strict CSP).
-document.getElementById('ms_location_btn').addEventListener('click', () => msToggle('ms_location'));
-document.getElementById('ms_industry_btn').addEventListener('click', () => msToggle('ms_industry'));
-document.getElementById('ms_type_btn').addEventListener('click', () => msToggle('ms_type'));
+MS_FILTERS.forEach(({ id }) =>
+  document.getElementById(id + '_btn').addEventListener('click', () => msToggle(id)));
 document.getElementById('clear_btn').addEventListener('click', clearFilters);
 
 // Sort / recency / remote controls re-run the search immediately, but only once
@@ -219,11 +224,7 @@ function clearFilters() {
   document.getElementById('posted_select').value = '';
   document.getElementById('remote_only').checked = false;
 
-  [
-    { id: 'ms_location',  key: 'locations'  },
-    { id: 'ms_industry',  key: 'industries' },
-    { id: 'ms_type',      key: 'jobTypes'   },
-  ].forEach(({ id, key }) => {
+  MS_FILTERS.forEach(({ id, key }) => {
     msState[key].clear();
     document.querySelectorAll(`#${id}_panel input[type="checkbox"]`).forEach(cb => {
       cb.checked = false;
@@ -268,9 +269,7 @@ const URL_KEYS = ['q', 'loc', 'ind', 'type', 'sort', 'posted', 'remote'];
 function filtersToQuery() {
   const p = new URLSearchParams();
   if (currentFilters.keyword) p.set('q', currentFilters.keyword);
-  msState.locations.forEach(v => p.append('loc', v));
-  msState.industries.forEach(v => p.append('ind', v));
-  msState.jobTypes.forEach(v => p.append('type', v));
+  MS_FILTERS.forEach(({ key, param }) => msState[key].forEach(v => p.append(param, v)));
   // Always written, so even a search with no filters leaves a marker in the URL.
   p.set('sort', currentFilters.sort);
   if (currentFilters.postedWithinDays) p.set('posted', String(currentFilters.postedWithinDays));
@@ -303,9 +302,7 @@ function applyQueryToForm(params) {
   setSelectIfValid('sort_select', params.get('sort'));
   setSelectIfValid('posted_select', params.get('posted'));
   document.getElementById('remote_only').checked = params.get('remote') === '1';
-  msSelect('ms_location', 'locations', params.getAll('loc'));
-  msSelect('ms_industry', 'industries', params.getAll('ind'));
-  msSelect('ms_type', 'jobTypes', params.getAll('type'));
+  MS_FILTERS.forEach(({ id, key, param }) => msSelect(id, key, params.getAll(param)));
 }
 
 // ── Scroll position across refreshes ─────────────────────────────────────────
@@ -634,7 +631,7 @@ async function markApplied(btn) {
     position:  btn.dataset.title,
     company:   btn.dataset.company,
     location:  btn.dataset.location,
-    pay:       btn.dataset.pay || 'Not listed',
+    pay:       jobById[btn.dataset.listingId]?.pay || 'Not listed',
     date_applied: todayLocal(),   // marking it applied = applied today
     status:    'Pending',
     notes:     '',
@@ -681,17 +678,13 @@ async function unmarkApplied(btn) {
     }
   }
 
-  const apps = JSON.parse(localStorage.getItem('si_applications') || '[]');
+  // Drop it from the local cache by the most specific key available.
   const listingId = btn.dataset.listingId;
-  let filtered;
-  if (appId) {
-    filtered = apps.filter(a => String(a.id) !== String(appId));
-  } else if (listingId) {
-    filtered = apps.filter(a => a.listingId !== listingId);
-  } else {
-    filtered = apps.filter(a => a.position !== btn.dataset.title || a.company !== btn.dataset.company);
-  }
-  localStorage.setItem('si_applications', JSON.stringify(filtered));
+  const keep = appId     ? a => String(a.id) !== String(appId)
+             : listingId ? a => a.listingId !== listingId
+             : a => a.position !== btn.dataset.title || a.company !== btn.dataset.company;
+  const apps = JSON.parse(localStorage.getItem('si_applications') || '[]');
+  localStorage.setItem('si_applications', JSON.stringify(apps.filter(keep)));
 
   btn.disabled = false;
   btn.textContent = 'Mark Applied';
@@ -699,7 +692,8 @@ async function unmarkApplied(btn) {
   delete btn.dataset.appId;
 }
 
-// Init - set up the static filters and load locations from the DB
+// ── Init ─────────────────────────────────────────────────────────────────────
+// Set up the static filters and load locations from the DB.
 
 msInit('ms_industry', 'industries', [
   { value: 'tech',      label: 'Technology' },

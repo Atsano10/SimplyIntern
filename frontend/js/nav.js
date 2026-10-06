@@ -1,3 +1,6 @@
+// nav.js — the slide-out menu (with Log Out), the active link in the top nav, and dark
+// mode, on every signed-in page.
+
 document.addEventListener('DOMContentLoaded', () => {
     if (localStorage.getItem('darkMode') === 'true') {
         document.body.classList.add('dark');
@@ -30,15 +33,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('.additional').addEventListener('click', openDrawer);
     document.getElementById('nav_close').addEventListener('click', closeDrawer);
     document.getElementById('nav_overlay').addEventListener('click', closeDrawer);
-    document.getElementById('drawer_logout').addEventListener('click', () => logOut());
+    document.getElementById('drawer_logout').addEventListener('click', logOut);
 
     // Mark active nav link: the one pointing at this page (<body data-page>).
     const page = document.body.dataset.page;
     document.querySelectorAll('.nav_section').forEach(section => {
         const href = section.querySelector('a')?.getAttribute('href') || '';
-        if (href && href.replace('.html', '') === page) {
-            section.classList.add('active');
-        }
+        if (href.replace('.html', '') === page) section.classList.add('active');
     });
 
     loadDrawerUser();

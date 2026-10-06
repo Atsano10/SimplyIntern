@@ -18,8 +18,9 @@ const IMPORT_HEADER_ALIASES = {
                    'posting link', 'posting url', 'job posting link', 'application link', 'link to posting'],
 };
 
-// Positional order assumed when the pasted data has no recognizable header row.
-const IMPORT_POSITIONAL = ['position', 'company', 'location', 'pay', 'date_applied', 'status', 'notes', 'url'];
+// The fields read from a file, in the column order assumed when it has no
+// recognizable header row.
+const IMPORT_FIELDS = ['position', 'company', 'location', 'pay', 'date_applied', 'status', 'notes', 'url'];
 
 // Maps a free-text status onto our known set; defaults to 'Pending'.
 function normalizeImportStatus(raw) {
@@ -153,30 +154,24 @@ function parseImport(text) {
     const dataRows = headerMap ? rows.slice(headerIdx + 1) : rows;
     result.headerDetected = !!headerMap;
 
-    const FIELDS = ['position', 'company', 'location', 'pay', 'date_applied', 'status', 'notes', 'url'];
-
     for (const cells of dataRows) {
         const vals = {};
-        for (const f of FIELDS) {
-            const idx = headerMap ? headerMap[f] : IMPORT_POSITIONAL.indexOf(f);
-            vals[f] = (idx != null && idx >= 0 && idx < cells.length) ? unprotectCell(cells[idx].trim()) : '';
+        for (const f of IMPORT_FIELDS) {
+            const idx = headerMap ? headerMap[f] : IMPORT_FIELDS.indexOf(f);
+            vals[f] = unprotectCell((cells[idx] ?? '').trim());   // a missing column reads as ''
         }
 
         if (!vals.position || !vals.company) {
             // Only flag rows that had some real content in a mapped column; blank or
             // purely structural spreadsheet rows (empty cells, stray counts) are ignored.
-            if (FIELDS.some(f => vals[f] !== '')) result.skipped++;
+            if (IMPORT_FIELDS.some(f => vals[f] !== '')) result.skipped++;
             continue;
         }
 
         const entry = {
-            position:     vals.position,
-            company:      vals.company,
-            location:     vals.location,
-            pay:          vals.pay,
+            ...vals,
             date_applied: normalizeImportDate(vals.date_applied),
             status:       normalizeImportStatus(vals.status),
-            notes:        vals.notes,
             // Filler like "N/A", "-", "TBD" (nothing with a dot in it) means no link.
             url:          vals.url.includes('.') ? normalizeUrlInput(vals.url) : '',
         };
@@ -203,6 +198,7 @@ const EXPORT_COLUMNS = [
 function protectCell(value) {
     return /^[=+\-@\t\r]/.test(value) ? "'" + value : value;
 }
+
 function unprotectCell(value) {
     return value.replace(/^'(?=[=+\-@])/, '');
 }

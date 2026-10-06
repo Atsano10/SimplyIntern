@@ -13,7 +13,7 @@ document.getElementById('reset_btn').addEventListener('click', async () => {
     const pw        = document.getElementById('new_password').value
     const confirmPw = document.getElementById('con_password').value
 
-    if (!pw || pw.length < 6) return setStatus('Password must be at least 6 characters.')
+    if (pw.length < 6)        return setStatus('Password must be at least 6 characters.')
     if (pw !== confirmPw)     return setStatus('Passwords do not match.')
 
     const { error } = await client.auth.updateUser({ password: pw })

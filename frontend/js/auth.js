@@ -1,15 +1,33 @@
-const SUPABASE_URL = window.SUPABASE_URL
-const SUPABASE_KEY = window.SUPABASE_ANON_KEY
+// auth.js — the Supabase client, sign-up / log-in / log-out, profile creation, and the
+// page guard at the bottom (which pages need an account). Loaded on every page except
+// reset-password.html.
 
 const { createClient } = supabase
-const client = createClient(SUPABASE_URL, SUPABASE_KEY)
+const client = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY)
+
+// ── Browser storage ──────────────────────────────────────────────────────────
+
+// Signup details kept until the profile exists (it can't be created before the email
+// is confirmed). Cleared once it has been.
+function clearPendingSignup() {
+    localStorage.removeItem('si_pending_username')
+    localStorage.removeItem('si_pending_email')
+}
+
+// Cached applications and saved jobs, cleared on log-out so they don't leak into the
+// next account that logs in on this browser.
+function clearAccountCache() {
+    localStorage.removeItem('si_applications')
+    localStorage.removeItem('si_saved')
+}
+
+// ── Sign up ──────────────────────────────────────────────────────────────────
 
 async function signUp() {
-    // Take user input
     const email = document.getElementById('email').value.trim()
     const username = document.getElementById('username').value.trim()
     const password = document.getElementById('password').value
-    const confirmPassword = document.getElementById("con_password").value
+    const confirmPassword = document.getElementById('con_password').value
 
     if (!email || !username || !password) {
         await showAlert('Please fill in your email, username, and password.', 'Sign up')
@@ -61,37 +79,22 @@ async function signUp() {
     // (RLS needs auth.uid()), so defer it to first sign-in and prompt verification.
     if (!data.session) {
         localStorage.setItem('si_pending_username', username)
-        localStorage.setItem('si_pending_email', email)
-        showVerifyNotice()
+        showVerifyNotice(email)
         await showAlert(`We sent a verification link to ${email}. Click it to activate your account, then log in.`, 'Verify your email')
         return
     }
 
     // Confirmation disabled: we have a session, so create the profile now.
-    const { error: insertError } = await client.from('profiles').insert({
-        id: data.user.id,
-        username,
-        email,
-    })
-
+    const { error: insertError } = await client.from('profiles').insert({ id: data.user.id, username, email })
     if (insertError) {
         await client.auth.signOut()
-
-        // 23505 = Postgres unique_violation. Decide which field clashed by the
-        // constraint NAME (reliable), not by loose words in the message text.
-        if (insertError.code === '23505') {
-            if (insertError.message.includes('profiles_username_key')) {
-                await showAlert(USERNAME_PROBLEMS.taken, 'Sign up')
-            } else if (insertError.message.includes('profiles_email_key')) {
-                await showAlert('An account with this email already exists!', 'Sign up')
-            } else {
-                await showAlert('That username or email is already taken.', 'Sign up')
-            }
-        } else if (insertError.message.includes('profiles_username_appropriate')) {
-            await showAlert(USERNAME_PROBLEMS.offensive, 'Sign up')
-        } else {
-            await showAlert('Profile save failed: ' + insertError.message, 'Sign up failed')
-        }
+        // Which rule failed is read from the constraint NAME in the error (reliable),
+        // not from loose words in the message. 23505 = Postgres unique_violation.
+        const why = usernameErrorMessage(insertError)
+            || ((insertError.message || '').includes('profiles_email_key') ? 'An account with this email already exists!' : null)
+            || (insertError.code === '23505' ? 'That username or email is already taken.' : null)
+        if (why) await showAlert(why, 'Sign up')
+        else await showAlert('Profile save failed: ' + insertError.message, 'Sign up failed')
         return
     }
 
@@ -99,8 +102,10 @@ async function signUp() {
     window.location.href = 'search.html'
 }
 
-// Reveals the "check your email" notice + resend link (present on login & signup pages).
-function showVerifyNotice() {
+// Remembers the address for "Resend email" and reveals the "check your email" notice
+// with its resend link (present on the login and signup pages).
+function showVerifyNotice(email) {
+    localStorage.setItem('si_pending_email', email)
     const notice = document.getElementById('verify_notice')
     if (notice) notice.style.display = 'block'
 }
@@ -121,29 +126,24 @@ async function resendVerification() {
     await showAlert('Verification email resent. Check your inbox (and spam).', 'Resend verification')
 }
 
-const resendLink = document.getElementById('resend_link')
-if (resendLink) resendLink.addEventListener('click', (e) => { e.preventDefault(); resendVerification() })
+// ── Log in / log out ─────────────────────────────────────────────────────────
 
-async function logIn(){
-    // Log in with email (username is a public display name, not a login key).
+// Log in with email (username is a public display name, not a login key).
+async function logIn() {
     const email = document.getElementById('email').value
     const password = document.getElementById('password').value
 
-    if (!email || !password){
+    if (!email || !password) {
         await showAlert('Please enter your email and password!', 'Log in')
         return
     }
 
-    const { data, error } = await client.auth.signInWithPassword({
-        email: email,
-        password: password
-    })
+    const { data, error } = await client.auth.signInWithPassword({ email, password })
 
     if (error) {
         // Supabase returns a specific error when the email hasn't been confirmed yet.
-        if (/email not confirmed|not confirmed|confirm/i.test(error.message)) {
-            localStorage.setItem('si_pending_email', email)
-            showVerifyNotice()
+        if (/confirm/i.test(error.message)) {
+            showVerifyNotice(email)
             await showAlert('Your email isn’t verified yet. Check your inbox for the link, or resend it below.', 'Verify your email')
         } else {
             await showAlert('Incorrect email or password!', 'Log in failed')
@@ -155,8 +155,7 @@ async function logIn(){
     // was somehow issued (e.g. the account predates enabling email confirmation).
     if (data.user && !data.user.email_confirmed_at) {
         await client.auth.signOut()
-        localStorage.setItem('si_pending_email', email)
-        showVerifyNotice()
+        showVerifyNotice(email)
         await showAlert('Please verify your email before logging in. Check your inbox for the link, or resend it below.', 'Verify your email')
         return
     }
@@ -167,40 +166,53 @@ async function logIn(){
 async function googleSignIn() {
     const { error } = await client.auth.signInWithOAuth({
         provider: 'google',
-        options: {
-            redirectTo: window.location.origin + '/index.html'
-        }
+        options: { redirectTo: window.location.origin + '/index.html' },
     })
+    if (error) await showAlert(error.message, 'Google sign-in failed')
+}
 
-    if (error){
-        await showAlert(error.message, 'Google sign-in failed')
+// Sends a password-reset email. Uses the email typed into the login form.
+async function forgotPassword() {
+    const email = document.getElementById('email').value
+    if (!email) {
+        await showAlert('Enter your email above first, then click "Forgot password?"', 'Reset password')
         return
     }
-}
 
-async function checkSession() {
-    const { data: { session } } = await client.auth.getSession()
-    if (session) {
-        // Defense in depth: an unconfirmed session must not reach the app. This also
-        // invalidates sessions created before email confirmation was enabled.
-        if (!session.user.email_confirmed_at) {
-            await client.auth.signOut()
-            return
-        }
+    // Confirm the destination address before sending anything.
+    const ok = await showConfirm(`Send a password-reset link to ${email}?`, 'Reset password')
+    if (!ok) return
 
-        const { data: profile } = await client
-            .from('profiles')
-            .select('username')
-            .eq('id', session.user.id)
-            .maybeSingle()
-
-        if (!profile) {
-            // No profile yet — Google OAuth user or someone who just confirmed email.
-            await createProfileFor(session)
-        }
-        window.location.href = 'search.html'
+    const { error } = await client.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/reset-password.html',
+    })
+    if (error) {
+        await showAlert(error.message, 'Something went wrong')
+        return
     }
+
+    // Deliberately neutral message — don't reveal whether the email is registered.
+    await showAlert('If an account exists for that email, a password-reset link is on its way. Check your inbox.', 'Check your inbox')
 }
+
+async function logOut() {
+    clearAccountCache()
+    await client.auth.signOut()
+    window.location.href = 'index.html'
+}
+
+// Kicks the user back to the login page with all per-account caches wiped. scope:'local'
+// clears the stored session without calling the server, which matters when the account
+// was deleted — a global sign-out would just fail against a user that no longer exists.
+async function forceLogout() {
+    clearAccountCache()
+    try { await client.auth.signOut({ scope: 'local' }) } catch (_) {}
+    window.location.replace('index.html')
+}
+
+// ── Profiles ─────────────────────────────────────────────────────────────────
+// Every account needs a profile row (username, leaderboard settings). Without one, an
+// account can track applications but never appear on the (profile-driven) leaderboard.
 
 // Creates the profile row for a session's user, choosing the username they picked at
 // signup (user_metadata or local stash) and falling back to the email prefix, deduped
@@ -218,13 +230,11 @@ async function createProfileFor(session) {
         if (problem === 'offensive') base = 'user'
     } catch (_) {}
 
-    // Try a few username variants. We RETRY on the actual insert, not just the
-    // availability check, so a race (name free at check time, taken at insert) still
-    // resolves. Each 23505 is inspected by constraint name so we never silently
-    // "succeed" on a conflict that left the user without a profile (the bug that hid
-    // the leaderboard issue for so long).
-    // After name, name1, name2, the suffix is a random 4-digit number, so a popular
-    // name (or the "user" fallback) can't run out of tries.
+    // Try a few username variants: name, name1, name2, then random 4-digit suffixes, so
+    // a popular name (or the "user" fallback) can't run out of tries. We RETRY on the
+    // actual insert, not just the availability check, so a race (name free at check
+    // time, taken at insert) still resolves. Each 23505 is inspected by constraint name
+    // so we never silently "succeed" on a conflict that left the user without a profile.
     for (let attempt = 0; attempt < 6; attempt++) {
         const suffix = attempt <= 2 ? String(attempt) : String(1000 + Math.floor(Math.random() * 9000))
         const username = attempt === 0 ? base : toValidUsername(base, suffix)
@@ -240,30 +250,21 @@ async function createProfileFor(session) {
             username,
             email: session.user.email,
         })
+        const msg = error?.message || ''
 
-        if (!error) {
-            localStorage.removeItem('si_pending_username')
-            localStorage.removeItem('si_pending_email')
+        // Created — or a profile already exists for this user id. Either way, done.
+        if (!error || (error.code === '23505' && msg.includes('profiles_pkey'))) {
+            clearPendingSignup()
             return true
         }
+        // Username clash → try the next variant.
+        if (error.code === '23505' && msg.includes('profiles_username_key')) continue
 
-        if (error.code === '23505') {
-            const msg = error.message || ''
-            // A profile already exists for this user id → genuinely done.
-            if (msg.includes('profiles_pkey')) {
-                localStorage.removeItem('si_pending_username')
-                localStorage.removeItem('si_pending_email')
-                return true
-            }
-            // Username clash → try the next variant.
-            if (msg.includes('profiles_username_key')) continue
-            // Email clash (e.g. an orphan profile holds this email) — unresolvable
-            // client-side. Surface it loudly instead of leaving the user profile-less.
-            console.error('Profile creation blocked (email already in use by another profile):', msg)
-            return false
-        }
-
-        console.error('Profile creation failed:', error.message)
+        // Email clash (e.g. an orphan profile holds this email) is unresolvable
+        // client-side, like any other error. Surface it loudly instead of looping.
+        console.error(error.code === '23505'
+            ? 'Profile creation blocked (email already in use by another profile): ' + msg
+            : 'Profile creation failed: ' + msg)
         return false
     }
 
@@ -271,32 +272,43 @@ async function createProfileFor(session) {
     return false
 }
 
-// Ensures the signed-in user has a profile row WITHOUT redirecting. Runs on the app
-// pages (which skip checkSession), so users who reached them directly — e.g. straight
-// to the Tracker after confirming email — still get a profile and therefore show up on
-// the leaderboard. Without this, such accounts have applications but no profile and are
-// invisible to the (profile-driven) leaderboard.
+// Creates the session user's profile if it doesn't exist yet.
+async function ensureProfileFor(session) {
+    const { data: profile } = await client
+        .from('profiles')
+        .select('id')
+        .eq('id', session.user.id)
+        .maybeSingle()
+    if (!profile) await createProfileFor(session)
+}
+
+// The same, for whoever is signed in, without redirecting. Runs on the app pages, so
+// users who reached one directly (e.g. straight to the Tracker after confirming their
+// email) still get a profile.
 async function ensureProfile() {
     try {
         const { data: { session } } = await client.auth.getSession()
-        if (!session) return
-        const { data: profile } = await client
-            .from('profiles')
-            .select('id')
-            .eq('id', session.user.id)
-            .maybeSingle()
-        if (!profile) await createProfileFor(session)
+        if (session) await ensureProfileFor(session)
     } catch (_) {}
 }
 
-// Kicks the user back to the login page with all per-account caches wiped. scope:'local'
-// clears the stored session without calling the server, which matters when the account
-// was deleted — a global sign-out would just fail against a user that no longer exists.
-async function forceLogout() {
-    localStorage.removeItem('si_applications')
-    localStorage.removeItem('si_saved')
-    try { await client.auth.signOut({ scope: 'local' }) } catch (_) {}
-    window.location.replace('index.html')
+// ── Page guards ──────────────────────────────────────────────────────────────
+
+// Login page: a signed-in user goes straight into the app.
+async function checkSession() {
+    const { data: { session } } = await client.auth.getSession()
+    if (!session) return
+
+    // Defense in depth: an unconfirmed session must not reach the app. This also
+    // invalidates sessions created before email confirmation was enabled.
+    if (!session.user.email_confirmed_at) {
+        await client.auth.signOut()
+        return
+    }
+
+    // No profile yet: a Google user, or someone who just confirmed their email.
+    await ensureProfileFor(session)
+    window.location.href = 'search.html'
 }
 
 // Server-side check that the session's account still exists. getSession() only reads
@@ -315,11 +327,8 @@ async function verifyAccount() {
     return false
 }
 
-// App pages are hidden until the account is verified so a deleted or logged-out user
+// App pages are hidden until the account is verified, so a deleted or logged-out user
 // never sees a flash of cached tracker/saved data before the redirect.
-// Pages that need a signed-in account (see the data-page check at the bottom).
-const APP_PAGES = ['search', 'saved', 'leaderboard', 'tracker', 'settings']
-
 async function requireAuth() {
     document.documentElement.style.visibility = 'hidden'
     const ok = await verifyAccount()
@@ -339,10 +348,25 @@ async function requireAuth() {
         if (event === 'SIGNED_OUT') forceLogout()
     })
 
-    // Make sure a profile exists here — otherwise an account can accumulate
-    // applications but never appear on the leaderboard.
     ensureProfile()
 }
+
+// ── Wiring (runs on load) ────────────────────────────────────────────────────
+
+// Buttons and links (addEventListener, not inline onclick, for the strict CSP).
+// Each one exists only on the login or signup page, hence the ?. guard. (In a block so
+// `on` doesn't become a global every other script would share.)
+{
+    const on = (id, handler) => document.getElementById(id)?.addEventListener('click', handler)
+    on('login_btn', logIn)
+    on('signup_btn', signUp)
+    on('google_btn', googleSignIn)
+    on('resend_link', (e) => { e.preventDefault(); resendVerification() })
+    on('forgot_link', (e) => { e.preventDefault(); forgotPassword() })
+}
+
+// Pages that need a signed-in account.
+const APP_PAGES = ['search', 'saved', 'leaderboard', 'tracker', 'settings']
 
 // Each page names itself with <body data-page="...">, so this doesn't depend on the
 // URL. (The old check matched any path containing the word, so a page named
@@ -357,51 +381,3 @@ if (PAGE === 'login') {
     if (!APP_PAGES.includes(PAGE)) console.error(`auth.js: unknown data-page "${PAGE}" — treating it as signed-in only`)
     requireAuth()
 }
-
-async function logOut() {
-    // Clear cached applications and saved jobs so they don't leak into the next
-    // account that logs in on this browser.
-    localStorage.removeItem('si_applications')
-    localStorage.removeItem('si_saved')
-    await client.auth.signOut()
-    window.location.href = 'index.html'
-}
-
-// Wire up auth buttons (moved off inline onclick handlers for a strict CSP).
-// Each guard runs only on the page where that button exists.
-const loginBtn = document.getElementById('login_btn')
-if (loginBtn) loginBtn.addEventListener('click', logIn)
-
-const signupBtn = document.getElementById('signup_btn')
-if (signupBtn) signupBtn.addEventListener('click', signUp)
-
-const googleBtn = document.getElementById('google_btn')
-if (googleBtn) googleBtn.addEventListener('click', googleSignIn)
-
-// Sends a password-reset email. Uses the email typed into the login form.
-async function forgotPassword() {
-    const email = document.getElementById('email').value
-    if (!email) {
-        await showAlert('Enter your email above first, then click "Forgot password?"', 'Reset password')
-        return
-    }
-
-    // Confirm the destination address before sending anything.
-    const ok = await showConfirm(`Send a password-reset link to ${email}?`, 'Reset password')
-    if (!ok) return
-
-    const { error } = await client.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + '/reset-password.html'
-    })
-
-    if (error) {
-        await showAlert(error.message, 'Something went wrong')
-        return
-    }
-
-    // Deliberately neutral message — don't reveal whether the email is registered.
-    await showAlert('If an account exists for that email, a password-reset link is on its way. Check your inbox.', 'Check your inbox')
-}
-
-const forgotLink = document.getElementById('forgot_link')
-if (forgotLink) forgotLink.addEventListener('click', (e) => { e.preventDefault(); forgotPassword() })

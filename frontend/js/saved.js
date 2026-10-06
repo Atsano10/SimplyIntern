@@ -4,6 +4,12 @@
 
 let savedJobs = [];
 
+// Writes the list to the local cache and redraws it.
+function storeAndRender() {
+  localStorage.setItem('si_saved', JSON.stringify(savedJobs));
+  renderSaved();
+}
+
 async function loadSaved() {
   try {
     const { data: { user } } = await client.auth.getUser();
@@ -15,8 +21,7 @@ async function loadSaved() {
         .order('created_at', { ascending: false });
       if (!error && data) {
         savedJobs = data.filter(r => r.listings).map(r => toSavedEntry(r.listings));
-        localStorage.setItem('si_saved', JSON.stringify(savedJobs));
-        renderSaved();
+        storeAndRender();
         return;
       }
     }
@@ -75,8 +80,7 @@ async function removeSaved(listingId) {
   const index = savedJobs.findIndex(s => s.listingId === listingId);
   if (index === -1) return;
   const [job] = savedJobs.splice(index, 1);
-  localStorage.setItem('si_saved', JSON.stringify(savedJobs));
-  renderSaved();
+  storeAndRender();
 
   const user = await signedInUser();
   if (!user) return;
@@ -85,8 +89,7 @@ async function removeSaved(listingId) {
     .eq('user_id', user.id).eq('listing_id', listingId);
   if (error) {
     savedJobs.splice(Math.min(index, savedJobs.length), 0, job);
-    localStorage.setItem('si_saved', JSON.stringify(savedJobs));
-    renderSaved();
+    storeAndRender();
     showSyncError(`Couldn’t remove “${job.title}” from your saved jobs.`, error);
   }
 }

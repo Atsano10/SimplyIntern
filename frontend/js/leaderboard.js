@@ -1,9 +1,14 @@
+// leaderboard.js — the top-50 board, the podium, and "Your Standing". Scores and ranks
+// all come from the database (migrations 018 and 023), never counted in the browser.
+
+// Must match the cap in the leaderboard_top view (migration 023).
+const LEADERBOARD_SIZE = 50;
+
 async function refreshAll() {
-    const cycleEl = document.getElementById('lb_cycle');
-    if (cycleEl) cycleEl.textContent = CURRENT_CYCLE;
+    document.getElementById('lb_cycle').textContent = CURRENT_CYCLE;
     // Make sure the signed-in user has a profile before building the board, so a
     // newly-created profile appears right away instead of after a manual refresh.
-    if (typeof ensureProfile === 'function') await ensureProfile();
+    await ensureProfile();
     await loadLeaderboard();
     await loadYourStanding();
 }
@@ -33,38 +38,26 @@ async function loadLeaderboard() {
     renderTable(ranked);
 }
 
+// Fills the 1st/2nd/3rd place cards (hidden until anyone has scored). A card with no
+// one in that place is hidden.
 function renderPodium(ranked) {
-    if (ranked.length < 1) return;
-
-    // Only show podium when there are users
+    if (ranked.length === 0) return;
     document.getElementById('podium_section').style.display = 'flex';
 
-    const slots = [
-        { suffix: '1', rank: 0 },
-        { suffix: '2', rank: 1 },
-        { suffix: '3', rank: 2 },
-    ];
-
-    slots.forEach(({ suffix, rank }) => {
-        const user = ranked[rank];
-        const card = document.getElementById(`rank_${suffix}`);
+    [1, 2, 3].forEach(place => {
+        const user = ranked[place - 1];
+        const card = document.getElementById(`rank_${place}`);
         if (!card) return;
-
         if (!user) {
             card.style.visibility = 'hidden';
             return;
         }
-
-        document.getElementById(`p${suffix}_avatar`).textContent    = user.username[0].toUpperCase();
-        document.getElementById(`p${suffix}_username`).textContent   = user.username;
-        document.getElementById(`p${suffix}_score`).textContent      = user.score + ' pts';
-        document.getElementById(`p${suffix}_breakdown`).textContent  =
-            `${user.rejected} rejected · ${user.pending} pending`;
+        document.getElementById(`p${place}_avatar`).textContent    = user.username[0].toUpperCase();
+        document.getElementById(`p${place}_username`).textContent  = user.username;
+        document.getElementById(`p${place}_score`).textContent     = user.score + ' pts';
+        document.getElementById(`p${place}_breakdown`).textContent = `${user.rejected} rejected · ${user.pending} pending`;
     });
 }
-
-// Must match the cap in the leaderboard_top view (migration 023).
-const LEADERBOARD_SIZE = 50;
 
 function renderTable(ranked) {
     const tbody = document.getElementById('lb_tbody');

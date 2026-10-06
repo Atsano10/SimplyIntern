@@ -1,4 +1,6 @@
-// Shared utilities loaded on every page.
+// Shared utilities loaded on every page (before the page's own scripts).
+
+// ── Escaping ─────────────────────────────────────────────────────────────────
 
 // Escapes strings before inserting them into innerHTML to prevent XSS.
 // Turns HTML-significant characters into harmless display-only equivalents,
@@ -14,35 +16,38 @@ function esc(str) {
     .replace(/'/g, '&#39;');
 }
 
-// Styled, CSP-safe replacements for alert()/confirm().
+// ── Dialogs ──────────────────────────────────────────────────────────────────
+// Styled, CSP-safe replacements for alert() / confirm() / prompt():
 //   showAlert(message[, title])   -> Promise (resolves when dismissed)
 //   showConfirm(message[, title]) -> Promise<boolean> (true = confirmed)
-function showModal({ title, message, confirmText = 'OK', cancelText = null }) {
+//   showPrompt({ title, message, placeholder }) -> Promise<string | null> (null = cancelled)
+
+// Builds the dialog. The promise resolves to confirmValue() for OK (button or Enter)
+// and to cancelValue for cancel (button, Escape, or a click on the dimmed backdrop).
+// Text goes in with textContent, so it's always shown, never run as markup.
+function openDialog({ title, message, confirmText, cancelText, input, confirmValue, cancelValue }) {
   return new Promise((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.className = 'si_modal_overlay';
+    const div = (className, text) => {
+      const el = document.createElement('div');
+      el.className = className;
+      if (text) el.textContent = text;
+      return el;
+    };
+    const button = (className, text, onClick) => {
+      const el = document.createElement('button');
+      el.className = 'si_modal_btn ' + className;
+      el.textContent = text;
+      el.addEventListener('click', onClick);
+      return el;
+    };
 
-    const box = document.createElement('div');
-    box.className = 'si_modal';
-
-    if (title) {
-      const h = document.createElement('div');
-      h.className = 'si_modal_title';
-      h.textContent = title;
-      box.appendChild(h);
-    }
-
-    const msg = document.createElement('div');
-    msg.className = 'si_modal_msg';
-    msg.textContent = message;         // textContent — safe, never executes markup
-    box.appendChild(msg);
-
-    const actions = document.createElement('div');
-    actions.className = 'si_modal_actions';
+    const overlay = div('si_modal_overlay');
+    const box = div('si_modal');
+    const actions = div('si_modal_actions');
 
     const onKey = (e) => {
-      if (e.key === 'Escape') close(false);
-      if (e.key === 'Enter') close(true);
+      if (e.key === 'Escape') close(cancelValue);
+      if (e.key === 'Enter') close(confirmValue());
     };
     const close = (result) => {
       document.removeEventListener('keydown', onKey);
@@ -50,94 +55,36 @@ function showModal({ title, message, confirmText = 'OK', cancelText = null }) {
       resolve(result);
     };
 
-    if (cancelText) {
-      const cancelBtn = document.createElement('button');
-      cancelBtn.className = 'si_modal_btn si_modal_cancel';
-      cancelBtn.textContent = cancelText;
-      cancelBtn.addEventListener('click', () => close(false));
-      actions.appendChild(cancelBtn);
-    }
-
-    const okBtn = document.createElement('button');
-    okBtn.className = 'si_modal_btn si_modal_confirm';
-    okBtn.textContent = confirmText;
-    okBtn.addEventListener('click', () => close(true));
+    if (title) box.appendChild(div('si_modal_title', title));
+    if (message) box.appendChild(div('si_modal_msg', message));
+    if (input) box.appendChild(input);
+    if (cancelText) actions.appendChild(button('si_modal_cancel', cancelText, () => close(cancelValue)));
+    const okBtn = button('si_modal_confirm', confirmText, () => close(confirmValue()));
     actions.appendChild(okBtn);
-
     box.appendChild(actions);
     overlay.appendChild(box);
-    // Clicking the dimmed backdrop cancels.
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
+
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(cancelValue); });
     document.addEventListener('keydown', onKey);
     document.body.appendChild(overlay);
-    okBtn.focus();
+    (input || okBtn).focus();
   });
+}
+
+function showModal({ title, message, confirmText = 'OK', cancelText = null }) {
+  return openDialog({ title, message, confirmText, cancelText, confirmValue: () => true, cancelValue: false });
 }
 
 function showAlert(message, title)   { return showModal({ title, message, confirmText: 'OK' }); }
 function showConfirm(message, title) { return showModal({ title, message, confirmText: 'Confirm', cancelText: 'Cancel' }); }
 
-// Styled, CSP-safe text prompt. Resolves to the trimmed string, or null if cancelled.
 function showPrompt({ title, message, placeholder = '', confirmText = 'OK', cancelText = 'Cancel' }) {
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.className = 'si_modal_overlay';
-
-    const box = document.createElement('div');
-    box.className = 'si_modal';
-
-    if (title) {
-      const h = document.createElement('div');
-      h.className = 'si_modal_title';
-      h.textContent = title;
-      box.appendChild(h);
-    }
-
-    if (message) {
-      const msg = document.createElement('div');
-      msg.className = 'si_modal_msg';
-      msg.textContent = message;
-      box.appendChild(msg);
-    }
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'si_modal_input';
-    input.placeholder = placeholder;
-    box.appendChild(input);
-
-    const actions = document.createElement('div');
-    actions.className = 'si_modal_actions';
-
-    const onKey = (e) => {
-      if (e.key === 'Escape') close(null);
-      if (e.key === 'Enter') close(input.value.trim() || null);
-    };
-    const close = (result) => {
-      document.removeEventListener('keydown', onKey);
-      overlay.remove();
-      resolve(result);
-    };
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'si_modal_btn si_modal_cancel';
-    cancelBtn.textContent = cancelText;
-    cancelBtn.addEventListener('click', () => close(null));
-    actions.appendChild(cancelBtn);
-
-    const okBtn = document.createElement('button');
-    okBtn.className = 'si_modal_btn si_modal_confirm';
-    okBtn.textContent = confirmText;
-    okBtn.addEventListener('click', () => close(input.value.trim() || null));
-    actions.appendChild(okBtn);
-
-    box.appendChild(actions);
-    overlay.appendChild(box);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
-    document.addEventListener('keydown', onKey);
-    document.body.appendChild(overlay);
-    input.focus();
-  });
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'si_modal_input';
+  input.placeholder = placeholder;
+  return openDialog({ title, message, confirmText, cancelText, input,
+                      confirmValue: () => input.value.trim() || null, cancelValue: null });
 }
 
 // ── Saving to Supabase ───────────────────────────────────────────────────────
@@ -192,6 +139,15 @@ const USERNAME_PROBLEMS = {
   taken:     'That username is already taken.',
 };
 
+// The message for a profile write the database rejected over a username rule (a name
+// that got past check_username, e.g. taken a moment later), or null for other errors.
+function usernameErrorMessage(error) {
+  const msg = error?.message || '';
+  if (msg.includes('profiles_username_key')) return USERNAME_PROBLEMS.taken;
+  if (msg.includes('profiles_username_appropriate')) return USERNAME_PROBLEMS.offensive;
+  return null;
+}
+
 // Turns any string (an email prefix, an old signup name) into a username that passes
 // the rule, leaving room for `suffix`, a number added to dodge a name that's taken.
 function toValidUsername(raw, suffix = '') {
@@ -201,10 +157,10 @@ function toValidUsername(raw, suffix = '') {
 }
 
 // ── Recruitment cycles ────────────────────────────────────────────────────────
-// Folders that always appear in the tracker.
-// Named by when the internship STARTS (not when you apply). Students applying in
-// late 2026 are targeting these. CURRENT_CYCLE is what the leaderboard counts —
-// keep it in sync with the SQL literal in the latest cycles migration.
+// Folders that always appear in the tracker, named by when the internship STARTS (not
+// when you apply): students applying in late 2026 are targeting these. CURRENT_CYCLE is
+// the one the leaderboard counts — keep it in sync with the cycle written into the
+// leaderboard_counts view (migration 018).
 const PREDEFINED_CYCLES = ['2027 Summer', '2027 Spring', '2026 Winter'];
 const CURRENT_CYCLE = '2027 Summer';
 

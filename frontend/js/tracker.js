@@ -1,21 +1,49 @@
 let applications = [];
 let editingApp = null; // the application object being edited, or null when adding
 
+// This browser's copy of the applications (the cloud is read and written separately).
+function storedApplications() {
+    return JSON.parse(localStorage.getItem('si_applications') || '[]');
+}
+function storeApplications() {
+    localStorage.setItem('si_applications', JSON.stringify(applications));
+}
+
+// "3 applications", "1 application".
+function plural(n, word) {
+    return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
 // ── FOLDERS / CYCLES ──────────────────────────────────────────────────────────
 const ALL_FOLDERS = '__all__';                 // sentinel for the "All folders" view
 let folders = [];                              // the user's CUSTOM folder names
 let activeFolder = CURRENT_CYCLE;              // the folder currently being viewed
 
-// Predefined cycles first, then any custom folders (deduped, order-preserving).
-function allFolderNames() {
-    const custom = folders.filter(f => !PREDEFINED_CYCLES.includes(f));
-    return [...PREDEFINED_CYCLES, ...custom];
+// Custom folders, minus any that repeat a predefined cycle's name.
+function customFolderNames() {
+    return folders.filter(f => !PREDEFINED_CYCLES.includes(f));
 }
 
-// Applications in the active folder (or all of them when "All folders" is selected).
+// Predefined cycles first, then the custom folders.
+function allFolderNames() {
+    return [...PREDEFINED_CYCLES, ...customFolderNames()];
+}
+
+// Applications in a folder (every application for "All folders").
+function appsInFolder(folder) {
+    if (folder === ALL_FOLDERS) return applications;
+    return applications.filter(a => (a.cycle || CURRENT_CYCLE) === folder);
+}
+
+// Applications in the folder being viewed.
 function getVisibleApps() {
-    if (activeFolder === ALL_FOLDERS) return applications;
-    return applications.filter(a => (a.cycle || CURRENT_CYCLE) === activeFolder);
+    return appsInFolder(activeFolder);
+}
+
+// The folder a new application goes into: the one being viewed, or the current
+// cycle when viewing "All folders".
+function cycleForNewApp() {
+    return activeFolder === ALL_FOLDERS ? CURRENT_CYCLE : activeFolder;
 }
 
 // Loads the user's custom folders (DB when signed in, else localStorage mirror).
@@ -59,16 +87,11 @@ function populateFolderSelects() {
 
 // ── FOLDER PICKER (custom popup replacing the native <select>) ──────────────
 
-function folderAppCount(folder) {
-    if (folder === ALL_FOLDERS) return applications.length;
-    return applications.filter(a => (a.cycle || CURRENT_CYCLE) === folder).length;
-}
-
 // Shows the active folder's name + application count on the picker button.
 function updateFolderButton() {
     document.getElementById('folder_btn_name').textContent =
         activeFolder === ALL_FOLDERS ? 'All folders' : activeFolder;
-    document.getElementById('folder_btn_count').textContent = folderAppCount(activeFolder);
+    document.getElementById('folder_btn_count').textContent = getVisibleApps().length;
 }
 
 // One selectable row in the menu. Built with textContent: folder names are user input.
@@ -97,7 +120,7 @@ function folderMenuItem(value, label, tag) {
     }
     const count = document.createElement('span');
     count.className = 'folder_item_count';
-    count.textContent = folderAppCount(value);
+    count.textContent = appsInFolder(value).length;
     item.appendChild(count);
     return item;
 }
@@ -120,7 +143,7 @@ function renderFolderMenu() {
     PREDEFINED_CYCLES.forEach(c =>
         menu.appendChild(folderMenuItem(c, c, c === CURRENT_CYCLE ? 'Current' : '')));
 
-    const custom = allFolderNames().filter(f => !PREDEFINED_CYCLES.includes(f));
+    const custom = customFolderNames();
     if (custom.length) {
         menu.appendChild(folderMenuSection('Your folders'));
         custom.forEach(f => menu.appendChild(folderMenuItem(f, f)));
@@ -200,8 +223,7 @@ async function createFolder() {
         placeholder: 'Off-Season 2026',
         confirmText: 'Create',
     });
-    if (!name) return;
-    const trimmed = name.trim();
+    const trimmed = (name || '').trim();
     if (!trimmed) return;
 
     if (allFolderNames().includes(trimmed) || trimmed === ALL_FOLDERS) {
@@ -237,7 +259,7 @@ async function deleteFolderApps() {
     }
 
     const ok = await showConfirm(
-        `Permanently delete all ${victims.length} application${victims.length === 1 ? '' : 's'} in ${scope}? This cannot be undone.`,
+        `Permanently delete all ${plural(victims.length, 'application')} in ${scope}? This cannot be undone.`,
         'Permanently delete'
     );
     if (!ok) return;
@@ -254,75 +276,64 @@ async function deleteFolderApps() {
 
     const victimSet = new Set(victims);
     applications = applications.filter(a => !victimSet.has(a));
-    localStorage.setItem('si_applications', JSON.stringify(applications));
+    storeApplications();
     renderTable();
-}
-
-// The cycle an application should get when created from each entry point.
-function cycleForNewApp() {
-    return activeFolder === ALL_FOLDERS ? CURRENT_CYCLE : activeFolder;
 }
 
 // ── LOAD ────────────────────────────────────────────────────────────────────
 
+// The tracker entry for an applications-table row (the reverse of toApplicationRow).
+function fromApplicationRow(row) {
+    return {
+        id:                row.id,
+        listingId:         row.listing_id || null,
+        url:               row.url || '',
+        position:          row.position,
+        company:           row.company,
+        location:          row.location || '',
+        pay:               row.pay || '',
+        date_applied:      row.date_applied || '',
+        status:            row.status,
+        notes:             row.notes || '',
+        reached_interview: row.reached_interview ?? false,
+        cycle:             row.cycle || CURRENT_CYCLE,
+    };
+}
+
 async function loadApplications() {
+    let user = null;
+    let rows = null;   // stays null when signed out or Supabase can't be reached
     try {
-        const { data: { user } } = await client.auth.getUser();
+        ({ data: { user } } = await client.auth.getUser());
         if (user) {
             const { data, error } = await client
                 .from('applications')
                 .select('*')
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false });
-
-            if (!error && data !== null) {
-                if (data.length > 0) {
-                    // Cloud has data — use it as the source of truth
-                    applications = data.map(row => ({
-                        id: row.id,
-                        listingId: row.listing_id || null,
-                        url: row.url || '',
-                        position: row.position,
-                        company: row.company,
-                        location: row.location || '',
-                        pay: row.pay || '',
-                        date_applied: row.date_applied || '',
-                        status: row.status,
-                        notes: row.notes || '',
-                        reached_interview: row.reached_interview ?? false,
-                        cycle: row.cycle || CURRENT_CYCLE,
-                    }));
-                    localStorage.setItem('si_applications', JSON.stringify(applications));
-                    renderTable();
-                    return;
-                }
-
-                // Cloud returned empty for THIS user. Keep only apps that were
-                // never synced (no id) — those are genuinely unsaved local work.
-                // Apps WITH an id belong to a different account's cloud data
-                // (e.g. a previous login in this browser), so we drop them
-                // instead of showing them under the current account.
-                const local = JSON.parse(localStorage.getItem('si_applications') || '[]');
-                const unsynced = local.filter(a => !a.id);
-                if (unsynced.length > 0) {
-                    applications = unsynced;
-                    localStorage.setItem('si_applications', JSON.stringify(applications));
-                    renderTable();
-                    syncLocalApps(user); // non-blocking background sync
-                    return;
-                }
-
-                applications = [];
-                localStorage.setItem('si_applications', '[]');
-                renderTable();
-                return;
-            }
+            if (!error) rows = data;
         }
     } catch (_) {}
 
-    // Fallback: not logged in or Supabase unreachable
-    applications = JSON.parse(localStorage.getItem('si_applications') || '[]');
+    let upload = false;
+    if (rows === null) {
+        // Signed out or offline: show this browser's copy.
+        applications = storedApplications();
+    } else if (rows.length > 0) {
+        // The cloud has data, so it's the source of truth.
+        applications = rows.map(fromApplicationRow);
+        storeApplications();
+    } else {
+        // The cloud is empty for THIS user. Keep only apps that were never synced (no
+        // id): those are genuinely unsaved local work. Apps WITH an id belong to a
+        // different account (e.g. a previous login in this browser), so they're dropped
+        // instead of showing up under this one.
+        applications = storedApplications().filter(a => !a.id);
+        storeApplications();
+        upload = applications.length > 0;
+    }
     renderTable();
+    if (upload) syncLocalApps(user);   // in the background
 }
 
 // Push any local-only apps (no cloud id) up to Supabase
@@ -338,7 +349,7 @@ async function syncLocalApps(user) {
         if (data) { app.id = data.id; changed = true; }
         if (error) showSyncError(`Couldn’t upload “${app.position}” from this browser to your account.`, error);
     }
-    if (changed) localStorage.setItem('si_applications', JSON.stringify(applications));
+    if (changed) storeApplications();
 }
 
 // ── SAVE ────────────────────────────────────────────────────────────────────
@@ -380,7 +391,7 @@ async function deleteApp(app) {
 
     const index = applications.indexOf(app);
     applications = applications.filter(a => a !== app);
-    localStorage.setItem('si_applications', JSON.stringify(applications));
+    storeApplications();
     renderTable();
 
     if (!app.id) return;
@@ -390,7 +401,7 @@ async function deleteApp(app) {
     const { error } = await client.from('applications').delete().eq('id', app.id);
     if (error) {
         applications.splice(Math.min(index, applications.length), 0, app);
-        localStorage.setItem('si_applications', JSON.stringify(applications));
+        storeApplications();
         renderTable();
         showSyncError(`Couldn’t delete “${app.position}”, so it’s back in your list.`, error);
     }
@@ -413,11 +424,50 @@ async function resetApp(app) {
     if (!(await saveApplication(updated))) return;
 
     Object.assign(app, updated);
-    localStorage.setItem('si_applications', JSON.stringify(applications));
+    storeApplications();
     renderTable();
 }
 
 // ── RENDER ──────────────────────────────────────────────────────────────────
+
+// Status → badge class. 'Applied' and 'Interview' are legacy values.
+const STATUS_CLASS = {
+    'Pending':             'Pending',
+    'Applied':             'Applied',
+    'Interview':           'Interview',
+    '1st Round Interview': 'Interview1',
+    '2nd Round Interview': 'Interview2',
+    'Accepted':            'Accepted',
+    'Rejected':            'Rejected',
+};
+
+// One table row. `i` is the app's index in getVisibleApps(), which the row buttons
+// carry so the click handler can find it.
+function applicationRowHtml(app, i) {
+    const href = safeHref(app.url);
+    const linkHtml = href
+        ? ` <a class="app_link" href="${esc(href)}" target="_blank" rel="noopener noreferrer" title="Open job posting" aria-label="Open job posting">&#8599;</a>`
+        : '';
+    // No link and not from our listings = imported without one; it doesn't score.
+    const importedHtml = (!app.url && !app.listingId)
+        ? ' <span class="imported_tag" title="No listing link, so this one doesn’t count on the leaderboard. Edit it to add one.">Imported</span>'
+        : '';
+    return `
+        <tr>
+            <td>${esc(app.position)}${linkHtml}${importedHtml}</td>
+            <td>${esc(app.company)}</td>
+            <td>${esc(app.location) || '—'}</td>
+            <td>${esc(app.pay) || '—'}</td>
+            <td>${formatDate(app.date_applied)}</td>
+            <td><span class="status_badge ${STATUS_CLASS[app.status] || 'Pending'}">${esc(app.status)}</span></td>
+            <td>${esc(app.notes) || '—'}</td>
+            <td class="row_actions">
+                ${app.status !== 'Pending' ? `<button class="row_reset" data-index="${i}" title="Reset to Pending">&#8634;</button>` : ''}
+                <button class="row_edit" data-index="${i}" title="Edit">&#9998;</button>
+                <button class="row_delete" data-index="${i}" title="Remove">&#10005;</button>
+            </td>
+        </tr>`;
+}
 
 function renderTable() {
     const tbody = document.getElementById('app_tbody');
@@ -436,42 +486,7 @@ function renderTable() {
         return;
     }
 
-    const STATUS_CLASS = {
-        'Pending':             'Pending',
-        'Applied':             'Applied',       // backward compat
-        'Interview':           'Interview',     // backward compat
-        '1st Round Interview': 'Interview1',
-        '2nd Round Interview': 'Interview2',
-        'Accepted':            'Accepted',
-        'Rejected':            'Rejected',
-    };
-
-    tbody.innerHTML = visible.map((app, i) => {
-        const cls = STATUS_CLASS[app.status] || 'Pending';
-        const href = safeHref(app.url);
-        const linkHtml = href
-            ? ` <a class="app_link" href="${esc(href)}" target="_blank" rel="noopener noreferrer" title="Open job posting" aria-label="Open job posting">&#8599;</a>`
-            : '';
-        // No link and not from our listings = imported without one; it doesn't score.
-        const importedHtml = (!app.url && !app.listingId)
-            ? ' <span class="imported_tag" title="No listing link, so this one doesn’t count on the leaderboard. Edit it to add one.">Imported</span>'
-            : '';
-        return `
-        <tr>
-            <td>${esc(app.position)}${linkHtml}${importedHtml}</td>
-            <td>${esc(app.company)}</td>
-            <td>${esc(app.location) || '—'}</td>
-            <td>${esc(app.pay) || '—'}</td>
-            <td>${formatDate(app.date_applied)}</td>
-            <td><span class="status_badge ${cls}">${esc(app.status)}</span></td>
-            <td>${esc(app.notes) || '—'}</td>
-            <td class="row_actions">
-                ${app.status !== 'Pending' ? `<button class="row_reset" data-index="${i}" title="Reset to Pending">&#8634;</button>` : ''}
-                <button class="row_edit" data-index="${i}" title="Edit">&#9998;</button>
-                <button class="row_delete" data-index="${i}" title="Remove">&#10005;</button>
-            </td>
-        </tr>`;
-    }).join('');
+    tbody.innerHTML = visible.map(applicationRowHtml).join('');
 
     updateStats();
 }
@@ -522,9 +537,9 @@ function renderInsights() {
     const responded   = visible.filter(a =>
         a.reached_interview || a.status === 'Accepted' || a.status === 'Rejected').length;
 
-    sub.textContent = `across ${total} application${total === 1 ? '' : 's'}`;
+    sub.textContent = `across ${plural(total, 'application')}`;
 
-    const pct = n => total ? Math.round((n / total) * 100) : 0;
+    const pct = n => Math.round((n / total) * 100);
 
     // Funnel: Interviewed is the milestone count; Offers is the current-Accepted count.
     // Bar width is relative to total.
@@ -592,17 +607,28 @@ async function verifyLinks(urls, onProgress) {
 // 'unverifiable' (the site blocks automated checks) is allowed through.
 const linkBlocked = r => r.status === 'dead' || r.status === 'invalid';
 
-// ── MODAL ───────────────────────────────────────────────────────────────────
-
-// Link rules for the row being edited:
+// Link rules for an application (null = a new one):
 //  - from our listings: fixed (the DB always uses the listing's own URL)
 //  - imported without a link: optional (adding one makes it count)
 //  - everything else, including new apps: required
+function linkRules(app) {
+    const fromListing = !!app?.listingId;
+    return { fromListing, optional: !!app && !app.url && !fromListing };
+}
+
+// ── MODAL ───────────────────────────────────────────────────────────────────
+
+// Modal input id → application field.
+const MODAL_FIELDS = [
+    ['m_position', 'position'], ['m_company', 'company'], ['m_location', 'location'],
+    ['m_pay', 'pay'], ['m_date', 'date_applied'], ['m_status', 'status'],
+    ['m_notes', 'notes'], ['m_folder', 'cycle'],
+];
+
 function setupLinkField(app) {
     const input = document.getElementById('m_url');
     const hint = document.getElementById('m_url_hint');
-    const fromListing = !!app?.listingId;
-    const optional = !!app && !app.url && !fromListing;
+    const { fromListing, optional } = linkRules(app);
 
     input.value = app?.url || '';
     input.readOnly = fromListing;
@@ -619,25 +645,10 @@ function openModal(app = null) {
     document.getElementById('modal_title').textContent = app ? 'Edit Application' : 'Add Application';
     populateFolderSelects(); // keep the folder picker fresh
 
-    if (app) {
-        document.getElementById('m_position').value = app.position;
-        document.getElementById('m_company').value = app.company;
-        document.getElementById('m_location').value = app.location || '';
-        document.getElementById('m_pay').value = app.pay || '';
-        document.getElementById('m_date').value = app.date_applied || '';
-        document.getElementById('m_status').value = app.status;
-        document.getElementById('m_notes').value = app.notes || '';
-        document.getElementById('m_folder').value = app.cycle || CURRENT_CYCLE;
-    } else {
-        document.getElementById('m_position').value = '';
-        document.getElementById('m_company').value = '';
-        document.getElementById('m_location').value = '';
-        document.getElementById('m_pay').value = '';
-        document.getElementById('m_date').value = '';
-        document.getElementById('m_status').value = 'Pending';
-        document.getElementById('m_notes').value = '';
-        document.getElementById('m_folder').value = cycleForNewApp();
-    }
+    const values = app
+        ? { ...app, cycle: app.cycle || CURRENT_CYCLE }
+        : { status: 'Pending', cycle: cycleForNewApp() };
+    for (const [id, field] of MODAL_FIELDS) document.getElementById(id).value = values[field] || '';
     setupLinkField(app);
 
     document.getElementById('modal_overlay').style.display = 'flex';
@@ -648,16 +659,15 @@ function closeModal() {
     editingApp = null;
 }
 
-// Edit/Delete are bound via delegation (rows are re-rendered, so we listen on
-// the stable tbody instead of using inline onclick — required for a strict CSP).
+// Row buttons are bound via delegation (rows are re-rendered, so we listen on the
+// stable tbody instead of using inline onclick — required for a strict CSP).
 document.getElementById('app_tbody').addEventListener('click', e => {
-    const editBtn  = e.target.closest('.row_edit');
-    const delBtn   = e.target.closest('.row_delete');
-    const resetBtn = e.target.closest('.row_reset');
-    const visible = getVisibleApps();           // data-index refers to this filtered list
-    if (editBtn) openModal(visible[Number(editBtn.dataset.index)]);
-    else if (delBtn) deleteApp(visible[Number(delBtn.dataset.index)]);
-    else if (resetBtn) resetApp(visible[Number(resetBtn.dataset.index)]);
+    const btn = e.target.closest('.row_edit, .row_delete, .row_reset');
+    if (!btn) return;
+    const app = getVisibleApps()[Number(btn.dataset.index)];   // data-index is into this list
+    if (btn.classList.contains('row_edit')) openModal(app);
+    else if (btn.classList.contains('row_delete')) deleteApp(app);
+    else resetApp(app);
 });
 
 // Folder controls.
@@ -671,6 +681,51 @@ document.getElementById('modal_overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('modal_overlay')) closeModal();
 });
 
+// Shows `label` on the disabled Save button while `work` runs.
+async function withSaveButton(label, work) {
+    const saveBtn = document.getElementById('modal_save');
+    saveBtn.disabled = true;
+    saveBtn.textContent = label;
+    try {
+        return await work();
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+    }
+}
+
+// The link to save for the app in the modal, checked first when it's new or changed.
+// Returns null (after telling the user why) when the save should stop.
+async function linkToSave() {
+    const urlInput = document.getElementById('m_url');
+    const { fromListing, optional } = linkRules(editingApp);
+    const url = fromListing ? editingApp.url : normalizeUrlInput(urlInput.value);
+
+    if (!url && !optional) {
+        await showAlert('Paste the link to the job posting. It’s required so the leaderboard only counts real applications.', 'Listing link required');
+        urlInput.focus();
+        return null;
+    }
+
+    // Only check new or changed links: a posting that closed after you applied
+    // shouldn't stop you from updating its status.
+    if (url && !fromListing && url !== (editingApp?.url || '')) {
+        let result;
+        try {
+            [result] = await withSaveButton('Checking link…', () => verifyLinks([url]));
+        } catch (_) {
+            await showAlert('We couldn’t check the link right now. Check your connection and try again.', 'Link check failed');
+            return null;
+        }
+        if (linkBlocked(result)) {
+            await showAlert(result.reason, 'That link didn’t check out');
+            urlInput.focus();
+            return null;
+        }
+    }
+    return url || '';
+}
+
 document.getElementById('modal_save').addEventListener('click', async () => {
     const position = document.getElementById('m_position').value.trim();
     const company = document.getElementById('m_company').value.trim();
@@ -680,42 +735,11 @@ document.getElementById('modal_save').addEventListener('click', async () => {
         return;
     }
 
-    const urlInput = document.getElementById('m_url');
-    const fromListing = !!editingApp?.listingId;
-    const url = fromListing ? editingApp.url : normalizeUrlInput(urlInput.value);
-    const linkOptional = !!editingApp && !editingApp.url && !fromListing;
-
-    if (!url && !linkOptional) {
-        await showAlert('Paste the link to the job posting. It’s required so the leaderboard only counts real applications.', 'Listing link required');
-        urlInput.focus();
-        return;
-    }
-
-    // Only check new or changed links: a posting that closed after you applied
-    // shouldn't stop you from updating its status.
-    if (url && !fromListing && url !== (editingApp?.url || '')) {
-        const saveBtn = document.getElementById('modal_save');
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'Checking link…';
-        let result;
-        try {
-            [result] = await verifyLinks([url]);
-        } catch (_) {
-            await showAlert('We couldn’t check the link right now. Check your connection and try again.', 'Link check failed');
-            return;
-        } finally {
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Save';
-        }
-        if (linkBlocked(result)) {
-            await showAlert(result.reason, 'That link didn’t check out');
-            urlInput.focus();
-            return;
-        }
-    }
+    const url = await linkToSave();
+    if (url === null) return;
 
     const fields = {
-        url: url || '',
+        url,
         position,
         company,
         location: document.getElementById('m_location').value.trim(),
@@ -736,18 +760,12 @@ document.getElementById('modal_save').addEventListener('click', async () => {
     // Pending clears it); a later accept/reject leaves it intact.
     applyInterviewMilestone(entry);
 
-    const saveBtn = document.getElementById('modal_save');
-    saveBtn.disabled = true;
-    saveBtn.textContent = 'Saving…';
-    const saved = await saveApplication(entry);
-    saveBtn.disabled = false;
-    saveBtn.textContent = 'Save';
-    if (!saved) return;
+    if (!(await withSaveButton('Saving…', () => saveApplication(entry)))) return;
 
     // Edits update the existing object, so its place in the list is kept.
     if (editingApp) Object.assign(editingApp, entry);
     else applications.push(entry);
-    localStorage.setItem('si_applications', JSON.stringify(applications));
+    storeApplications();
 
     // If the app was moved into a different folder than the one being viewed, keep the
     // current view selected (it'll simply drop out of this folder's list).
@@ -764,12 +782,7 @@ let importFileText = '';
 function openImportModal() {
     importFileText = '';
     document.getElementById('import_file').value = '';
-    document.getElementById('import_preview').textContent = '';
-    document.getElementById('import_notice').hidden = true;
-    document.getElementById('import_nolinks').hidden = true;
-    const confirmBtn = document.getElementById('import_confirm');
-    confirmBtn.disabled = true;
-    confirmBtn.textContent = 'Import';
+    renderImportPreview();   // with no file: empty preview, buttons reset
     document.getElementById('import_overlay').style.display = 'flex';
 }
 
@@ -781,13 +794,12 @@ function closeImportModal() {
 // through the main button; if any lack a link, a separate "without links" button
 // appears with a note that those won't count on the leaderboard.
 function renderImportPreview() {
-    const text = importFileText;
     const preview = document.getElementById('import_preview');
     const notice = document.getElementById('import_notice');
     const confirmBtn = document.getElementById('import_confirm');
     const noLinksBtn = document.getElementById('import_nolinks');
 
-    if (!text.trim()) {
+    if (!importFileText.trim()) {
         preview.textContent = '';
         notice.hidden = true;
         noLinksBtn.hidden = true;
@@ -796,7 +808,7 @@ function renderImportPreview() {
         return;
     }
 
-    const parsed = parseImport(text);
+    const parsed = parseImport(importFileText);
     const n = parsed.entries.length;
     const linked = parsed.entries.filter(e => e.url).length;
     const unlinked = n - linked;
@@ -810,18 +822,40 @@ function renderImportPreview() {
         `${linked === 0 ? 'None of these have' : `${unlinked} of these ${unlinked === 1 ? 'doesn’t have' : 'don’t have'}`} a listing link. ` +
         'You can still import them. They’ll show as “Imported” in your tracker, but they won’t count on the leaderboard unless you add a link.';
 
-    let msg = `${n} application${n === 1 ? '' : 's'} ready to import into “${cycleForNewApp()}”`;
+    let msg = `${plural(n, 'application')} ready to import into “${cycleForNewApp()}”`;
     if (parsed.headerDetected) msg += ' · header detected';
     if (parsed.skipped) msg += ` · ${parsed.skipped} skipped (missing position/company)`;
-    if (n > 0) msg += `\n${linked} with link${linked === 1 ? '' : 's'} · ${unlinked} without`;
-
     if (n > 0) {
+        msg += `\n${linked} with link${linked === 1 ? '' : 's'} · ${unlinked} without`;
         const sample = parsed.entries.slice(0, 3)
             .map(e => `• ${e.position} — ${e.company}${e.status !== 'Pending' ? ' (' + e.status + ')' : ''}`)
             .join('\n');
         msg += '\n' + sample + (n > 3 ? `\n…and ${n - 3} more` : '');
     }
     preview.textContent = msg;
+}
+
+// Checks each distinct link among the entries (showing progress in the preview) and
+// splits them into the ones to import and the ones whose link didn't check out.
+// Throws if the check itself couldn't run.
+async function checkImportLinks(entries) {
+    const uniqueUrls = [...new Set(entries.filter(e => e.url).map(e => e.url))];
+    if (uniqueUrls.length === 0) return { kept: entries, badLinks: [] };
+
+    const preview = document.getElementById('import_preview');
+    preview.textContent = `Checking links… 0 / ${uniqueUrls.length}`;
+    const results = await verifyLinks(uniqueUrls, (done, total) => {
+        preview.textContent = `Checking links… ${done} / ${total}`;
+    });
+
+    const verdict = new Map(results.map((r, i) => [uniqueUrls[i], r]));
+    const kept = [], badLinks = [];
+    for (const e of entries) {
+        const r = e.url && verdict.get(e.url);
+        if (r && linkBlocked(r)) badLinks.push({ entry: e, reason: r.reason });
+        else kept.push(e);
+    }
+    return { kept, badLinks };
 }
 
 // Imports the parsed rows. includeUnlinked=false imports only rows with a link;
@@ -834,35 +868,22 @@ async function doImport(includeUnlinked) {
 
     const preview = document.getElementById('import_preview');
     const buttons = ['import_confirm', 'import_nolinks', 'import_cancel'].map(id => document.getElementById(id));
-    buttons.forEach(b => { b.disabled = true; });
+    const setButtonsDisabled = disabled => buttons.forEach(b => { b.disabled = disabled; });
 
-    // 1. Check every distinct link.
-    const badLinks = [];
-    const uniqueUrls = [...new Set(entries.filter(e => e.url).map(e => e.url))];
-    if (uniqueUrls.length) {
-        preview.textContent = `Checking links… 0 / ${uniqueUrls.length}`;
-        let results;
-        try {
-            results = await verifyLinks(uniqueUrls, (done, total) => {
-                preview.textContent = `Checking links… ${done} / ${total}`;
-            });
-        } catch (_) {
-            buttons.forEach(b => { b.disabled = false; });
-            renderImportPreview();
-            await showAlert('We couldn’t check the links right now. Check your connection and try again.', 'Link check failed');
-            return;
-        }
-        const verdict = new Map(results.map((r, i) => [uniqueUrls[i], r]));
-        entries = entries.filter(e => {
-            const r = e.url && verdict.get(e.url);
-            if (r && linkBlocked(r)) { badLinks.push({ entry: e, reason: r.reason }); return false; }
-            return true;
-        });
+    setButtonsDisabled(true);
+    let badLinks;
+    try {
+        ({ kept: entries, badLinks } = await checkImportLinks(entries));
+    } catch (_) {
+        setButtonsDisabled(false);
+        renderImportPreview();
+        await showAlert('We couldn’t check the links right now. Check your connection and try again.', 'Link check failed');
+        return;
     }
-    buttons.forEach(b => { b.disabled = false; });
+    setButtonsDisabled(false);
 
     const skippedNote = badLinks.length
-        ? `\n\nLeft out ${badLinks.length} row${badLinks.length === 1 ? '' : 's'} whose link didn’t check out:\n` +
+        ? `\n\nLeft out ${plural(badLinks.length, 'row')} whose link didn’t check out:\n` +
           badLinks.slice(0, 5).map(b => `• ${b.entry.position} — ${b.entry.company}: ${b.reason}`).join('\n') +
           (badLinks.length > 5 ? `\n…and ${badLinks.length - 5} more` : '') +
           '\nFix those links in your sheet and import them again.'
@@ -901,15 +922,15 @@ async function doImport(includeUnlinked) {
     } else {
         // Logged out — keep them in this browser only (no ids).
         applications = entries.concat(applications);
-        localStorage.setItem('si_applications', JSON.stringify(applications));
+        storeApplications();
         renderTable();
     }
 
     const noLink = entries.filter(e => !e.url).length;
     await showAlert(
-        `Imported ${entries.length} application${entries.length === 1 ? '' : 's'}.` +
+        `Imported ${plural(entries.length, 'application')}.` +
         (noLink ? ` ${noLink} without a link ${noLink === 1 ? 'is' : 'are'} marked “Imported” and won’t count on the leaderboard.` : '') +
-        (parsed.skipped ? ` ${parsed.skipped} row${parsed.skipped === 1 ? '' : 's'} skipped (missing position or company).` : '') +
+        (parsed.skipped ? ` ${plural(parsed.skipped, 'row')} skipped (missing position or company).` : '') +
         skippedNote,
         'Import complete'
     );
@@ -923,6 +944,22 @@ document.getElementById('import_overlay').addEventListener('click', e => {
 });
 document.getElementById('import_confirm').addEventListener('click', () => doImport(false));
 document.getElementById('import_nolinks').addEventListener('click', () => doImport(true));
+
+// File picker loads the file's text, then previews it.
+document.getElementById('import_file').addEventListener('change', e => {
+    const file = e.target.files?.[0];
+    if (!file) {
+        importFileText = '';
+        renderImportPreview();
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+        importFileText = String(reader.result || '');
+        renderImportPreview();
+    };
+    reader.readAsText(file);
+});
 
 // ── EXPORT ───────────────────────────────────────────────────────────────────
 
@@ -949,22 +986,6 @@ async function exportApplications() {
 }
 
 document.getElementById('export_btn').addEventListener('click', exportApplications);
-
-// File picker loads the file's text, then previews it.
-document.getElementById('import_file').addEventListener('change', e => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) {
-        importFileText = '';
-        renderImportPreview();
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-        importFileText = String(reader.result || '');
-        renderImportPreview();
-    };
-    reader.readAsText(file);
-});
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 

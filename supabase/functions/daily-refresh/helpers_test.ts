@@ -1,8 +1,9 @@
 // Run: deno test supabase/functions/daily-refresh
 import { assert, assertEquals } from 'jsr:@std/assert@1';
 import {
-  ashbyPay, cleanCellText, cleanCompanyName, cleanZapplyLocation, dedupeKey, formatPay, greenhousePostedDate,
-  isInternship, leverPay, mapPipeColumns, parseGithubAge, programPay, stripTrackingParams, timingSafeEqual,
+  ashbyPay, cleanCellText, cleanCompanyName, cleanZapplyLocation, dedupeKey, formatPay, getType, greenhousePostedDate,
+  isInternship, leverPay, type Listing, mapPipeColumns, parseGithubAge, prepareListings, programPay,
+  stripTrackingParams, timingSafeEqual,
 } from './helpers.ts';
 
 Deno.test('cleanCompanyName strips suffixes, labels, and symbols', () => {
@@ -145,4 +146,31 @@ Deno.test('leverPay and ashbyPay read each API\'s pay shape', () => {
   ] }), '$12,500/mo');
   assertEquals(ashbyPay({ summaryComponents: [] }), null);
   assertEquals(ashbyPay(null), null);
+});
+
+Deno.test('getType: co-op and externship from the title, otherwise internship', () => {
+  assertEquals(getType('Software Engineer Intern'), 'internship');
+  assertEquals(getType('Engineering Co-op'), 'co-op');
+  assertEquals(getType('Spring Coop'), 'co-op');
+  assertEquals(getType('Legal Externship'), 'externship');
+  assertEquals(getType('Summer Co-ops'), 'co-op');
+  assertEquals(getType('Medical Extern'), 'externship');
+  // Whole words only:
+  assertEquals(getType('External Comms Intern'), 'internship');
+  assertEquals(getType('Cooper Labs Intern'), 'internship');
+  assertEquals(getType('Cooperative Research Intern'), 'internship');
+});
+
+Deno.test('prepareListings: first copy of each posting wins, emoji halves removed, timestamp set', () => {
+  const row = (url: string, source: string, title = 'Intern'): Listing =>
+    ({ title, company: 'Co', location: null, pay: null, type: 'internship', url, source, posted_at: null });
+  const out = prepareListings([
+    row('https://boards.greenhouse.io/x/jobs/1', 'greenhouse'),
+    row('https://www.boards.greenhouse.io/x/jobs/1/?utm_source=Simplify', 'github'),   // same posting
+    row('https://jobs.lever.co/y/2', 'lever', 'Intern \uD83D'),                         // lone surrogate
+  ], '2026-10-06T00:00:00.000Z');
+  assertEquals(out.map(r => r.source), ['greenhouse', 'lever']);
+  assertEquals(out[1].title, 'Intern ');
+  assertEquals(out.every(r => r.updated_at === '2026-10-06T00:00:00.000Z'), true);
+  assertEquals(out[0].location, null);
 });
