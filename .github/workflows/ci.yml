@@ -67,3 +67,4 @@ jobs:
           cp -R frontend "$RUNNER_TEMP/site"
           cd "$RUNNER_TEMP/site"
           sh -c "$(node -p "require('./vercel.json').buildCommand")"
+          test -s js/config.js || { echo "The build didn't write js/config.js"; exit 1; }

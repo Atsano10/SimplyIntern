@@ -10,6 +10,8 @@ const pages = [...Deno.readDirSync(FRONTEND)]
   .filter(f => f.isFile && f.name.endsWith('.html'))
   .map(f => ({ name: f.name, html: readFrontend(f.name) }));
 
+const BUILD_OUTPUTS = ['js/config.js'];
+
 const scriptsOf = (html: string) => [...html.matchAll(/<script\b[^>]*\bsrc="([^"?]+)/g)].map(m => m[1]);
 
 // APP_PAGES as written in auth.js, so this test can't drift from it.
@@ -33,6 +35,9 @@ for (const { name, html } of pages) {
   Deno.test(`${name}: every local script and stylesheet exists`, () => {
     const refs = [...html.matchAll(/\b(?:src|href)="((?:js|css)\/[^"?#]+)/g)].map(m => m[1]);
     for (const ref of refs) {
+      // Written by the build (frontend/scripts/inject-env.js) and gitignored, so it's
+      // missing from a fresh checkout. CI's build job checks that it gets generated.
+      if (BUILD_OUTPUTS.includes(ref)) continue;
       let found = true;
       try { Deno.statSync(new URL(ref, FRONTEND)); } catch { found = false; }
       assert(found, `${ref} doesn't exist`);
