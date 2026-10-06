@@ -84,19 +84,30 @@ function renderSaved() {
   list.appendChild(frag);
 }
 
-// Un-bookmarks a listing: drops it from the local cache + Supabase, then re-renders.
+// Un-bookmarks a listing: removes the card right away, then deletes it in Supabase,
+// putting the card back if that fails.
 async function removeSaved(listingId) {
-  savedJobs = savedJobs.filter(s => s.listingId !== listingId);
+  const index = savedJobs.findIndex(s => s.listingId === listingId);
+  if (index === -1) return;
+  const [job] = savedJobs.splice(index, 1);
   localStorage.setItem('si_saved', JSON.stringify(savedJobs));
   renderSaved();
-  try {
-    const { data: { user } } = await client.auth.getUser();
-    if (user) await client.from('saved_jobs').delete()
-      .eq('user_id', user.id).eq('listing_id', listingId);
-  } catch (_) {}
+
+  const user = await signedInUser();
+  if (!user) return;
+
+  const { error } = await client.from('saved_jobs').delete()
+    .eq('user_id', user.id).eq('listing_id', listingId);
+  if (error) {
+    savedJobs.splice(Math.min(index, savedJobs.length), 0, job);
+    localStorage.setItem('si_saved', JSON.stringify(savedJobs));
+    renderSaved();
+    showSyncError(`Couldn’t remove “${job.title}” from your saved jobs.`, error);
+  }
 }
 
-// Moves a saved job into the tracker (applications) and off the shortlist.
+// Moves a saved job into the tracker (applications) and off the shortlist. If the
+// tracker insert fails, the job stays saved and the button can be clicked again.
 async function applyFromSaved(job, btn) {
   btn.disabled = true;
 
@@ -112,24 +123,27 @@ async function applyFromSaved(job, btn) {
     cycle:     CURRENT_CYCLE,
   };
 
-  try {
-    const { data: { user } } = await client.auth.getUser();
-    if (user) {
-      const { data } = await client.from('applications').insert({
-        user_id:    user.id,
-        listing_id: entry.listingId,
-        url:        entry.url || null,   // the DB also fills this from the listing
-        position:   entry.position,
-        company:    entry.company,
-        location:   entry.location,
-        pay:        entry.pay,
-        status:     entry.status,
-        notes:      entry.notes,
-        cycle:      entry.cycle,
-      }).select().single();
-      if (data) entry.id = data.id;
+  const user = await signedInUser();
+  if (user) {
+    const { data, error } = await client.from('applications').insert({
+      user_id:    user.id,
+      listing_id: entry.listingId,
+      url:        entry.url || null,   // the DB also fills this from the listing
+      position:   entry.position,
+      company:    entry.company,
+      location:   entry.location,
+      pay:        entry.pay,
+      status:     entry.status,
+      notes:      entry.notes,
+      cycle:      entry.cycle,
+    }).select().single();
+    if (error) {
+      btn.disabled = false;
+      showSyncError(`Couldn’t add “${job.title}” to your tracker.`, error);
+      return;
     }
-  } catch (_) {}
+    entry.id = data.id;
+  }
 
   const apps = JSON.parse(localStorage.getItem('si_applications') || '[]');
   apps.push(entry);

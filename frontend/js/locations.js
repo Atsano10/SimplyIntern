@@ -154,10 +154,11 @@ function locExactPatterns(part) {
   return [e, `${e} / %`, `% / ${e}`, `% / ${e} / %`];
 }
 
-// Builds the filter options from every listing's raw location string.
+// Builds the filter options from each distinct location string and how many
+// listings have it, e.g. { "Seattle, WA": 12 } (the listing_locations RPC).
 // Returns { options: [{ value, label, group, count }], patterns: { value: [...] }, unknown: [...] }
 // Groups: 'top' (Remote, United States), 'us' (states), 'intl' (countries).
-function buildLocationIndex(locations) {
+function buildLocationIndex(locationCounts) {
   const counts = {};
   const patterns = {};   // bucket -> Set of ILIKE patterns
   const unknown = new Set();
@@ -166,7 +167,7 @@ function buildLocationIndex(locations) {
     list.forEach(p => patterns[key].add(p));
   };
 
-  locations.forEach(loc => {
+  Object.entries(locationCounts).forEach(([loc, n]) => {
     if (!loc) return;
     const keys = new Set();
     loc.split(' / ').forEach(rawPart => {
@@ -193,7 +194,7 @@ function buildLocationIndex(locations) {
         if (key.startsWith('us:')) addPatterns('us', list);
       });
     });
-    keys.forEach(k => { counts[k] = (counts[k] || 0) + 1; });
+    keys.forEach(k => { counts[k] = (counts[k] || 0) + n; });
   });
 
   const options = Object.keys(counts).map(value => {

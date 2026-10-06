@@ -76,13 +76,13 @@ Note: the security headers in `frontend/vercel.json` are only applied on Vercel,
 
 ## Deployment
 
-The app is deployed on [Vercel](https://vercel.com) with the project's **Root Directory set to `frontend/`**. Vercel only reads `vercel.json` from the Root Directory, so `frontend/vercel.json` is the one that applies. On each deploy, `frontend/scripts/inject-env.js` runs as the build step to write the Supabase credentials into `js/config.js`.
+The app is deployed on [Vercel](https://vercel.com) with the project's **Root Directory set to `frontend/`**. Vercel only reads `vercel.json` from the Root Directory, so `frontend/vercel.json` is the one that applies. On each deploy, `frontend/scripts/inject-env.js` runs as the build step: it writes the Supabase credentials into `js/config.js`, then stamps every local script/stylesheet URL in the HTML pages with a hash of that file's contents (`js/util.js?v=3f9c2a1b7e`).
 
 Set the following environment variables in your Vercel project:
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 
-When changing a JS or CSS file, bump its `?v=` query string in the HTML pages so browsers don't serve a stale cached copy.
+Cache busting is automatic: editing a JS or CSS file changes its hash, so browsers fetch the new copy, while unchanged files stay cached (stamped URLs get a one-year `immutable` cache header). Don't add `?v=` to the HTML by hand. Reference new files as plain `js/x.js` / `css/x.css`, and the build stamps them. A page that points at a file that doesn't exist fails the build.
 
 **Supabase:** migrations in `supabase/migrations/` are applied manually in order (via the Supabase SQL Editor). The `daily-refresh` Edge Function is deployed with the Supabase CLI and triggered daily at 06:00 UTC by the `pg_cron` job in migration `010`.
 

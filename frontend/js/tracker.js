@@ -209,13 +209,17 @@ async function createFolder() {
         return;
     }
 
+    const user = await signedInUser();
+    if (user) {
+        const { error } = await client.from('folders').insert({ user_id: user.id, name: trimmed });
+        if (error) {
+            showSyncError(`Couldn’t create the folder “${trimmed}”. Try again.`, error);
+            return;
+        }
+    }
+
     folders.push(trimmed);
     localStorage.setItem('si_folders', JSON.stringify(folders));
-    try {
-        const { data: { user } } = await client.auth.getUser();
-        if (user) await client.from('folders').insert({ user_id: user.id, name: trimmed });
-    } catch (_) {}
-
     activeFolder = trimmed;
     localStorage.setItem('si_active_folder', activeFolder);
     populateFolderSelects();
@@ -239,10 +243,14 @@ async function deleteFolderApps() {
     if (!ok) return;
 
     const ids = victims.filter(a => a.id).map(a => a.id);
-    try {
-        const { data: { user } } = await client.auth.getUser();
-        if (user && ids.length) await client.from('applications').delete().in('id', ids);
-    } catch (_) {}
+    const user = await signedInUser();
+    if (user && ids.length) {
+        const { error } = await client.from('applications').delete().in('id', ids);
+        if (error) {
+            showSyncError('Couldn’t delete those applications, so nothing was removed. Try again.', error);
+            return;
+        }
+    }
 
     const victimSet = new Set(victims);
     applications = applications.filter(a => !victimSet.has(a));
@@ -356,115 +364,77 @@ async function syncLocalApps(user) {
             .select()
             .single();
         if (data) { app.id = data.id; changed = true; }
-        if (error) showSyncBanner(error.message);
+        if (error) showSyncError(`Couldn’t upload “${app.position}” from this browser to your account.`, error);
     }
     if (changed) localStorage.setItem('si_applications', JSON.stringify(applications));
 }
 
-function showSyncBanner(errorMsg) {
-    const existing = document.getElementById('sync_banner');
-    if (existing) existing.remove();
-    const isDark = document.body.classList.contains('dark');
-    const banner = document.createElement('div');
-    banner.id = 'sync_banner';
-    banner.style.cssText = [
-        `background:${isDark ? '#2a200a' : '#fff3cd'}`,
-        `color:${isDark ? '#ffc107' : '#856404'}`,
-        'padding:10px 20px',
-        'font-size:13px',
-        `border-bottom:1px solid ${isDark ? '#5a4000' : '#ffc107'}`,
-        'display:flex',
-        'align-items:center',
-        'justify-content:space-between',
-        'gap:12px',
-    ].join(';');
-    const msg = errorMsg ? `⚠ Sync failed: "${errorMsg}"` : '⚠ Sync failed — unknown error.';
-    // Build with DOM methods: textContent can't execute markup (no esc needed),
-    // and the close button uses addEventListener instead of an inline onclick.
-    const span = document.createElement('span');
-    span.textContent = msg;
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:16px;color:inherit;flex-shrink:0;';
-    closeBtn.addEventListener('click', () => banner.remove());
-    banner.append(span, closeBtn);
-    const section = document.querySelector('.tracker_section');
-    if (section) section.prepend(banner);
-}
-
 // ── SAVE ────────────────────────────────────────────────────────────────────
 
+// Writes one application to Supabase: updates the row if it has an id, otherwise
+// inserts it and stores the new id on `entry`. Returns false (after showing the sync
+// banner) when the write fails, so the caller can leave its local state untouched.
+// Signed out there's nothing to write, so it returns true.
 async function saveApplication(entry) {
-    try {
-        const { data: { user } } = await client.auth.getUser();
-        if (user) {
-            if (entry.id) {
-                // Update existing row
-                const { error } = await client
-                    .from('applications')
-                    .update({
-                        url: entry.url || null,
-                        position: entry.position,
-                        company: entry.company,
-                        location: entry.location,
-                        pay: entry.pay,
-                        date_applied: entry.date_applied || null,
-                        status: entry.status,
-                        notes: entry.notes,
-                        reached_interview: entry.reached_interview ?? false,
-                        cycle: entry.cycle || CURRENT_CYCLE,
-                    })
-                    .eq('id', entry.id);
-                if (error) console.error('Update failed:', error.message);
-            } else {
-                // Insert new row and get back the UUID
-                const { data, error } = await client
-                    .from('applications')
-                    .insert({
-                        user_id: user.id,
-                        listing_id: entry.listingId || null,
-                        url: entry.url || null,
-                        position: entry.position,
-                        company: entry.company,
-                        location: entry.location,
-                        pay: entry.pay,
-                        date_applied: entry.date_applied || null,
-                        status: entry.status,
-                        notes: entry.notes,
-                        reached_interview: entry.reached_interview ?? false,
-                        cycle: entry.cycle || CURRENT_CYCLE,
-                    })
-                    .select()
-                    .single();
-                if (error) {
-                    console.error('Insert failed:', error.message);
-                    showSyncBanner(error.message);
-                } else if (data) {
-                    entry.id = data.id;
-                }
-            }
-        }
-    } catch (err) {
-        console.error('Save error:', err);
-    }
+    const user = await signedInUser();
+    if (!user) return true;
 
-    localStorage.setItem('si_applications', JSON.stringify(applications));
+    const row = {
+        url: entry.url || null,
+        position: entry.position,
+        company: entry.company,
+        location: entry.location,
+        pay: entry.pay,
+        date_applied: entry.date_applied || null,
+        status: entry.status,
+        notes: entry.notes,
+        reached_interview: entry.reached_interview ?? false,
+        cycle: entry.cycle || CURRENT_CYCLE,
+    };
+
+    if (entry.id) {
+        const { error } = await client.from('applications').update(row).eq('id', entry.id);
+        if (error) {
+            showSyncError(`Couldn’t save your changes to “${entry.position}”.`, error);
+            return false;
+        }
+    } else {
+        const { data, error } = await client
+            .from('applications')
+            .insert({ ...row, user_id: user.id, listing_id: entry.listingId || null })
+            .select()
+            .single();
+        if (error) {
+            showSyncError(`Couldn’t add “${entry.position}” to your account.`, error);
+            return false;
+        }
+        entry.id = data.id;
+    }
+    return true;
 }
 
 // ── DELETE ──────────────────────────────────────────────────────────────────
 
+// Removes the row right away, then puts it back if the server delete fails.
 async function deleteApp(app) {
     if (!app) return;
 
-    if (app.id) {
-        try {
-            await client.from('applications').delete().eq('id', app.id);
-        } catch (_) {}
-    }
-
+    const index = applications.indexOf(app);
     applications = applications.filter(a => a !== app);
     localStorage.setItem('si_applications', JSON.stringify(applications));
     renderTable();
+
+    if (!app.id) return;
+    const user = await signedInUser();
+    if (!user) return;
+
+    const { error } = await client.from('applications').delete().eq('id', app.id);
+    if (error) {
+        applications.splice(Math.min(index, applications.length), 0, app);
+        localStorage.setItem('si_applications', JSON.stringify(applications));
+        renderTable();
+        showSyncError(`Couldn’t delete “${app.position}”, so it’s back in your list.`, error);
+    }
 }
 
 // Resets a single application back to 'Pending', which clears its interview/offer
@@ -478,9 +448,13 @@ async function resetApp(app) {
     );
     if (!ok) return;
 
-    app.status = 'Pending';
-    applyInterviewMilestone(app); // Pending clears the interview milestone
-    await saveApplication(app);   // persists to Supabase (if synced) + localStorage
+    // Change a copy, so a failed save leaves the row as it was.
+    const updated = { ...app, status: 'Pending' };
+    applyInterviewMilestone(updated); // Pending clears the interview milestone
+    if (!(await saveApplication(updated))) return;
+
+    Object.assign(app, updated);
+    localStorage.setItem('si_applications', JSON.stringify(applications));
     renderTable();
 }
 
@@ -801,21 +775,28 @@ document.getElementById('modal_save').addEventListener('click', async () => {
         cycle: document.getElementById('m_folder').value,
     };
 
-    let entry;
-    if (editingApp) {
-        // Mutate in place so the id and array position are preserved.
-        Object.assign(editingApp, fields);
-        entry = editingApp;
-    } else {
-        entry = { ...fields, reached_interview: false };
-        applications.push(entry);
-    }
+    // Save a copy first. If the save fails, the table stays as it was and the modal
+    // stays open, so nothing typed is lost and Save can simply be clicked again.
+    const entry = editingApp
+        ? { ...editingApp, ...fields }
+        : { ...fields, reached_interview: false };
 
     // The new status updates the interview milestone (reaching an interview sets it;
     // Pending clears it); a later accept/reject leaves it intact.
     applyInterviewMilestone(entry);
 
-    await saveApplication(entry);
+    const saveBtn = document.getElementById('modal_save');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    const saved = await saveApplication(entry);
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save';
+    if (!saved) return;
+
+    // Edits update the existing object, so its place in the list is kept.
+    if (editingApp) Object.assign(editingApp, entry);
+    else applications.push(entry);
+    localStorage.setItem('si_applications', JSON.stringify(applications));
 
     // If the app was moved into a different folder than the one being viewed, keep the
     // current view selected (it'll simply drop out of this folder's list).
@@ -1094,36 +1075,39 @@ async function doImport(includeUnlinked) {
     entries.forEach(e => { e.cycle = importCycle; });
     preview.textContent = `Importing ${entries.length}…`;
 
-    let synced = false;
-    try {
-        const { data: { user } } = await client.auth.getUser();
-        if (user) {
-            const payload = entries.map(e => ({
-                user_id:           user.id,
-                url:               e.url || null,
-                position:          e.position,
-                company:           e.company,
-                location:          e.location,
-                pay:               e.pay,
-                date_applied:      e.date_applied || null,
-                status:            e.status,
-                notes:             e.notes,
-                reached_interview: e.reached_interview ?? false,
-                cycle:             e.cycle,
-            }));
-            const { error } = await client.from('applications').insert(payload);
-            if (error) showSyncBanner(error.message);
-            else synced = true;
+    const user = await signedInUser();
+    if (user) {
+        const payload = entries.map(e => ({
+            user_id:           user.id,
+            url:               e.url || null,
+            position:          e.position,
+            company:           e.company,
+            location:          e.location,
+            pay:               e.pay,
+            date_applied:      e.date_applied || null,
+            status:            e.status,
+            notes:             e.notes,
+            reached_interview: e.reached_interview ?? false,
+            cycle:             e.cycle,
+        }));
+        // One insert, so it's all or nothing. On failure, keep the modal open with
+        // the file still loaded so Import can be clicked again. (Keeping the rows
+        // only in this browser would lose them on the next load from the cloud.)
+        const { error } = await client.from('applications').insert(payload);
+        if (error) {
+            renderImportPreview();
+            showSyncError('Couldn’t import your applications, so nothing was added. Try again.', error);
+            return;
         }
-    } catch (_) {}
+    }
 
     closeImportModal();
 
-    if (synced) {
+    if (user) {
         // Reload from the cloud so the imported rows come back with their real ids.
         await loadApplications();
     } else {
-        // Logged out or sync failed — keep them locally (no ids).
+        // Logged out — keep them in this browser only (no ids).
         applications = entries.concat(applications);
         localStorage.setItem('si_applications', JSON.stringify(applications));
         renderTable();

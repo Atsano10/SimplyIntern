@@ -97,23 +97,12 @@ document.addEventListener('click', e => {
 
 // Location filter
 
-// Supabase returns at most 1000 rows per request, so page through every listing's
-// location (a single .limit(2000) silently stopped at 1000 and dropped half the places).
-async function fetchAllLocations() {
-  const PAGE = 1000;
-  const all = [];
-  for (let from = 0; from < 50000; from += PAGE) {
-    const { data, error } = await client
-      .from('listings')
-      .select('location')
-      .not('location', 'is', null)
-      .order('id')
-      .range(from, from + PAGE - 1);
-    if (error) throw error;
-    data.forEach(r => all.push(r.location));
-    if (data.length < PAGE) break;
-  }
-  return all;
+// Every distinct listing location with its listing count, in one call
+// (migration 020) instead of paging through the whole listings table.
+async function fetchLocationCounts() {
+  const { data, error } = await client.rpc('listing_locations');
+  if (error) throw error;
+  return data || {};
 }
 
 // Builds the grouped location panel: Remote / United States, then U.S. states, then
@@ -122,7 +111,7 @@ async function loadLocationFilter() {
   const panel = document.getElementById('ms_location_panel');
   let index;
   try {
-    index = buildLocationIndex(await fetchAllLocations());
+    index = buildLocationIndex(await fetchLocationCounts());
   } catch (err) {
     console.error('Could not load locations:', err);
     const msg = document.createElement('div');
@@ -579,33 +568,46 @@ async function syncSavedFromCloud() {
   } catch (_) {}
 }
 
-// Bookmarks or un-bookmarks a listing. Updates localStorage immediately and
-// syncs to Supabase when signed in. Safe to call for logged-out users (local only).
+// Adds or removes one listing in the local saved cache. Only touches that one
+// listing, so undoing a failed save can't wipe out a different card's change.
+function setLocalSaved(listingId, isSaved) {
+  const saved = JSON.parse(localStorage.getItem('si_saved') || '[]')
+    .filter(s => s.listingId !== listingId);
+  const job = jobById[listingId];
+  if (isSaved && job) saved.push(toSavedEntry(job));
+  localStorage.setItem('si_saved', JSON.stringify(saved));
+}
+
+// Bookmarks or un-bookmarks a listing. Flips the button and localStorage right away,
+// then syncs to Supabase when signed in, undoing the flip if that fails. Safe to call
+// for logged-out users (local only).
 async function toggleSaved(btn) {
   const listingId = btn.dataset.listingId;
   if (!listingId) return;
 
-  const saved = JSON.parse(localStorage.getItem('si_saved') || '[]');
-  const already = saved.some(s => s.listingId === listingId);
+  const already = getSavedIds().has(listingId);
+  setLocalSaved(listingId, !already);
+  setSavedBtnState(btn, !already);
 
-  if (already) {
-    localStorage.setItem('si_saved', JSON.stringify(saved.filter(s => s.listingId !== listingId)));
-    setSavedBtnState(btn, false);
-    try {
-      const { data: { user } } = await client.auth.getUser();
-      if (user) await client.from('saved_jobs').delete()
-        .eq('user_id', user.id).eq('listing_id', listingId);
-    } catch (_) {}
-  } else {
-    const job = jobById[listingId];
-    if (job) saved.push(toSavedEntry(job));
-    localStorage.setItem('si_saved', JSON.stringify(saved));
-    setSavedBtnState(btn, true);
-    try {
-      const { data: { user } } = await client.auth.getUser();
-      if (user) await client.from('saved_jobs')
+  // Disabled until the server answers, so a fast second click can't send a save and
+  // an unsave that reach the server in the wrong order.
+  btn.disabled = true;
+  const user = await signedInUser();
+  if (!user) {
+    btn.disabled = false;
+    return;
+  }
+
+  const { error } = already
+    ? await client.from('saved_jobs').delete().eq('user_id', user.id).eq('listing_id', listingId)
+    : await client.from('saved_jobs')
         .upsert({ user_id: user.id, listing_id: listingId }, { onConflict: 'user_id,listing_id' });
-    } catch (_) {}
+  btn.disabled = false;
+
+  if (error) {
+    setLocalSaved(listingId, already);
+    setSavedBtnState(btn, already);
+    showSyncError(already ? 'Couldn’t remove this from your saved jobs.' : 'Couldn’t save this job.', error);
   }
 }
 
@@ -629,28 +631,31 @@ async function markApplied(btn) {
     cycle:     CURRENT_CYCLE,
   };
 
-  try {
-    const { data: { user } } = await client.auth.getUser();
-    if (user) {
-      const { data, error } = await client.from('applications').insert({
-        user_id:    user.id,
-        listing_id: entry.listingId,
-        url:        entry.url || null,   // the DB also fills this from the listing
-        position:   entry.position,
-        company:    entry.company,
-        location:   entry.location,
-        pay:        entry.pay,
-        status:     entry.status,
-        notes:      entry.notes,
-        cycle:      entry.cycle,
-      }).select().single();
+  btn.disabled = true;   // until saved, so a double click can't add it twice
+  const user = await signedInUser();
+  if (user) {
+    const { data, error } = await client.from('applications').insert({
+      user_id:    user.id,
+      listing_id: entry.listingId,
+      url:        entry.url || null,   // the DB also fills this from the listing
+      position:   entry.position,
+      company:    entry.company,
+      location:   entry.location,
+      pay:        entry.pay,
+      status:     entry.status,
+      notes:      entry.notes,
+      cycle:      entry.cycle,
+    }).select().single();
 
-      if (!error && data) {
-        entry.id = data.id;
-        btn.dataset.appId = data.id;
-      }
+    if (error) {
+      btn.disabled = false;
+      showSyncError(`Couldn’t add “${entry.position}” to your tracker.`, error);
+      return;
     }
-  } catch (_) {}
+    entry.id = data.id;
+    btn.dataset.appId = data.id;
+  }
+  btn.disabled = false;
 
   const apps = JSON.parse(localStorage.getItem('si_applications') || '[]');
   apps.push(entry);
@@ -660,16 +665,21 @@ async function markApplied(btn) {
   btn.classList.add('applied');
 }
 
-// Removes the application from localStorage and the DB, then resets the button to its default state
+// Removes the application from the DB and localStorage, then resets the button to
+// its default state. If the DB delete fails, it stays applied.
 async function unmarkApplied(btn) {
   const appId = btn.dataset.appId;
 
-  try {
-    const { data: { user } } = await client.auth.getUser();
-    if (user && appId) {
-      await client.from('applications').delete().eq('id', appId);
+  btn.disabled = true;
+  const user = await signedInUser();
+  if (user && appId) {
+    const { error } = await client.from('applications').delete().eq('id', appId);
+    if (error) {
+      btn.disabled = false;
+      showSyncError('Couldn’t remove this from your tracker.', error);
+      return;
     }
-  } catch (_) {}
+  }
 
   const apps = JSON.parse(localStorage.getItem('si_applications') || '[]');
   const listingId = btn.dataset.listingId;
@@ -683,6 +693,7 @@ async function unmarkApplied(btn) {
   }
   localStorage.setItem('si_applications', JSON.stringify(filtered));
 
+  btn.disabled = false;
   btn.textContent = 'Mark Applied';
   btn.classList.remove('applied');
   delete btn.dataset.appId;

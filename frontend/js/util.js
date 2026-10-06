@@ -138,6 +138,44 @@ function showPrompt({ title, message, placeholder = '', confirmText = 'OK', canc
   });
 }
 
+// ── Saving to Supabase ───────────────────────────────────────────────────────
+
+// The signed-in user, or null when signed out. Reads the session stored in this
+// browser instead of asking the server (getUser), so a dropped connection makes the
+// write fail visibly rather than looking like "signed out" and quietly saving the
+// change only to localStorage, where the next load from the cloud would undo it.
+async function signedInUser() {
+  try {
+    const { data } = await client.auth.getSession();
+    return data.session?.user || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Warning bar for a change that didn't reach the server. `message` says what
+// failed in plain words; the server's error text is added for debugging. Stays until
+// dismissed, and a newer error replaces it.
+function showSyncError(message, error) {
+  document.getElementById('si_sync_banner')?.remove();
+  const banner = document.createElement('div');
+  banner.id = 'si_sync_banner';
+  banner.className = 'si_sync_banner';
+  banner.setAttribute('role', 'alert');
+
+  const text = document.createElement('span');
+  text.textContent = `⚠ ${message}` + (error?.message ? ` (${error.message})` : '');
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'si_sync_close';
+  closeBtn.setAttribute('aria-label', 'Dismiss');
+  closeBtn.textContent = '✕';
+  closeBtn.addEventListener('click', () => banner.remove());
+
+  banner.append(text, closeBtn);
+  document.body.appendChild(banner);
+}
+
 // ── Recruitment cycles ────────────────────────────────────────────────────────
 // Folders that always appear in the tracker.
 // Named by when the internship STARTS (not when you apply). Students applying in
