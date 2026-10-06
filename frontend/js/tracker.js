@@ -263,21 +263,6 @@ function cycleForNewApp() {
     return activeFolder === ALL_FOLDERS ? CURRENT_CYCLE : activeFolder;
 }
 
-// Interview-stage statuses (includes the legacy 'Interview').
-const INTERVIEW_STATUSES = ['1st Round Interview', '2nd Round Interview', 'Interview'];
-
-// Maintains the reached_interview milestone for an application based on its status:
-// reaching any interview round turns it on; returning to Pending clears it (a restart);
-// Accepted/Rejected leave it untouched, so an interview that ended in a later
-// accept/reject still counts as an interview.
-function applyInterviewMilestone(app) {
-    if (app.status === 'Pending' || app.status === 'Applied') {
-        app.reached_interview = false;
-    } else if (INTERVIEW_STATUSES.includes(app.status)) {
-        app.reached_interview = true;
-    }
-}
-
 // ── LOAD ────────────────────────────────────────────────────────────────────
 
 async function loadApplications() {
@@ -347,20 +332,7 @@ async function syncLocalApps(user) {
         if (app.id) continue; // already in Supabase
         const { data, error } = await client
             .from('applications')
-            .insert({
-                user_id: user.id,
-                listing_id: app.listingId || null,
-                url: app.url || null,
-                position: app.position,
-                company: app.company,
-                location: app.location,
-                pay: app.pay,
-                date_applied: app.date_applied || null,
-                status: app.status,
-                notes: app.notes,
-                reached_interview: app.reached_interview ?? false,
-                cycle: app.cycle || CURRENT_CYCLE,
-            })
+            .insert(toApplicationRow(app, user.id))
             .select()
             .single();
         if (data) { app.id = data.id; changed = true; }
@@ -379,21 +351,8 @@ async function saveApplication(entry) {
     const user = await signedInUser();
     if (!user) return true;
 
-    const row = {
-        url: entry.url || null,
-        position: entry.position,
-        company: entry.company,
-        location: entry.location,
-        pay: entry.pay,
-        date_applied: entry.date_applied || null,
-        status: entry.status,
-        notes: entry.notes,
-        reached_interview: entry.reached_interview ?? false,
-        cycle: entry.cycle || CURRENT_CYCLE,
-    };
-
     if (entry.id) {
-        const { error } = await client.from('applications').update(row).eq('id', entry.id);
+        const { error } = await client.from('applications').update(toApplicationRow(entry)).eq('id', entry.id);
         if (error) {
             showSyncError(`Couldn’t save your changes to “${entry.position}”.`, error);
             return false;
@@ -401,7 +360,7 @@ async function saveApplication(entry) {
     } else {
         const { data, error } = await client
             .from('applications')
-            .insert({ ...row, user_id: user.id, listing_id: entry.listingId || null })
+            .insert(toApplicationRow(entry, user.id))
             .select()
             .single();
         if (error) {
@@ -528,7 +487,7 @@ function updateStats() {
     const visible = getVisibleApps();
     document.getElementById('stat_total').textContent = visible.length;
     document.getElementById('stat_pending').textContent =
-        visible.filter(a => ['Pending', 'Applied', 'Interview', '1st Round Interview', '2nd Round Interview'].includes(a.status)).length;
+        visible.filter(a => PENDING_STATUSES.includes(a.status)).length;
     document.getElementById('stat_rejected').textContent =
         visible.filter(a => a.status === 'Rejected').length;
     document.getElementById('stat_accepted').textContent =
@@ -608,14 +567,6 @@ function renderInsights() {
 // (migration 018), so skipping this code doesn't earn points.
 
 const VERIFY_BATCH = 25;   // the edge function's per-request limit
-
-// Adds https:// when someone pastes "www.site.com/job" without it.
-function normalizeUrlInput(raw) {
-    const v = (raw || '').trim();
-    if (!v) return '';
-    if (!/^[a-z][a-z0-9+.-]*:/i.test(v) && /^[\w-]+(\.[\w-]+)+(\/|\?|$)/.test(v)) return 'https://' + v;
-    return v;
-}
 
 // Only http(s) links are ever rendered as clickable.
 function safeHref(url) {
@@ -805,154 +756,7 @@ document.getElementById('modal_save').addEventListener('click', async () => {
 });
 
 // ── IMPORT ───────────────────────────────────────────────────────────────────
-
-// Column-header aliases → our internal fields (case/space-insensitive match).
-const IMPORT_HEADER_ALIASES = {
-    position:     ['position', 'role', 'title', 'job', 'job title', 'jobtitle', 'posting'],
-    company:      ['company', 'employer', 'organization', 'organisation', 'org'],
-    location:     ['location', 'city', 'place', 'where', 'loc'],
-    pay:          ['pay', 'salary', 'compensation', 'pay rate', 'payrate', 'rate', 'stipend'],
-    date_applied: ['date', 'date applied', 'applied', 'application date', 'applied on', 'dateapplied'],
-    status:       ['status', 'stage', 'result', 'outcome'],
-    notes:        ['notes', 'note', 'comments', 'comment'],
-    url:          ['link', 'url', 'listing', 'listing link', 'listing url', 'job link', 'job url',
-                   'posting link', 'posting url', 'job posting link', 'application link', 'link to posting'],
-};
-
-// Positional order assumed when the pasted data has no recognizable header row.
-const IMPORT_POSITIONAL = ['position', 'company', 'location', 'pay', 'date_applied', 'status', 'notes', 'url'];
-
-// Maps a free-text status onto our known set; defaults to 'Pending'.
-function normalizeImportStatus(raw) {
-    const s = (raw || '').trim().toLowerCase();
-    if (!s) return 'Pending';
-    if (/reject|declin|denied/.test(s))                   return 'Rejected';
-    if (/accept|offer|hired/.test(s))                     return 'Accepted';
-    if (/2nd|second|final|round 2|onsite|super/.test(s))  return '2nd Round Interview';
-    if (/interview|1st|first|phone|screen|round|technical/.test(s)) return '1st Round Interview';
-    return 'Pending'; // applied / pending / submitted / unknown
-}
-
-// Best-effort date → YYYY-MM-DD; '' if unparseable.
-function normalizeImportDate(raw) {
-    const s = (raw || '').trim();
-    if (!s) return '';
-    const d = new Date(s);
-    return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
-}
-
-// Picks the delimiter from the first non-empty line: tabs (spreadsheet paste) win,
-// otherwise commas.
-function detectDelimiter(text) {
-    const line = text.split(/\r?\n/).find(l => l.trim() !== '') || '';
-    const tabs = (line.match(/\t/g) || []).length;
-    const commas = (line.match(/,/g) || []).length;
-    return tabs > 0 && tabs >= commas ? '\t' : ',';
-}
-
-// Splits delimited text into rows of fields, honoring "quoted, fields" and escaped
-// "" quotes. Blank rows are dropped.
-function parseDelimited(text, delim) {
-    const rows = [];
-    let row = [], field = '', inQuotes = false;
-    for (let i = 0; i < text.length; i++) {
-        const c = text[i];
-        if (inQuotes) {
-            if (c === '"') {
-                if (text[i + 1] === '"') { field += '"'; i++; }
-                else inQuotes = false;
-            } else field += c;
-        } else if (c === '"') {
-            inQuotes = true;
-        } else if (c === delim) {
-            row.push(field); field = '';
-        } else if (c === '\n') {
-            row.push(field); rows.push(row); row = []; field = '';
-        } else if (c !== '\r') {
-            field += c;
-        }
-    }
-    row.push(field);
-    rows.push(row);
-    return rows.filter(r => r.some(cell => cell.trim() !== ''));
-}
-
-// Normalizes a header cell for alias matching: lowercase, punctuation→space, collapsed.
-// So "Status:", "Pay Rate", "Date Applied " all match cleanly.
-function normalizeHeaderCell(cell) {
-    return cell.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-// For a candidate header row, returns its field→columnIndex map and how many fields matched.
-function headerMapFor(cells) {
-    const map = {};
-    let hits = 0;
-    cells.forEach((cell, i) => {
-        const norm = normalizeHeaderCell(cell);
-        if (!norm) return;
-        for (const [field, aliases] of Object.entries(IMPORT_HEADER_ALIASES)) {
-            if (!(field in map) && aliases.includes(norm)) { map[field] = i; hits++; break; }
-        }
-    });
-    return { map, hits };
-}
-
-// Parses CSV/TSV text into { entries, skipped, headerDetected }.
-function parseImport(text) {
-    const result = { entries: [], skipped: 0, headerDetected: false };
-    if (!text.trim()) return result;
-
-    const rows = parseDelimited(text, detectDelimiter(text));
-    if (rows.length === 0) return result;
-
-    // Spreadsheet exports often have title/blank rows and leading empty columns before
-    // the real header, so scan the first several rows for the best header match rather
-    // than assuming row 0. Column indices from the matched header also absorb any
-    // leading empty columns, since data rows share the same layout.
-    let headerMap = null, headerIdx = -1, bestHits = 1; // need >= 2 matches to qualify
-    const scanLimit = Math.min(rows.length, 15);
-    for (let i = 0; i < scanLimit; i++) {
-        const { map, hits } = headerMapFor(rows[i]);
-        if (hits > bestHits && ('company' in map || 'position' in map)) {
-            bestHits = hits; headerMap = map; headerIdx = i;
-        }
-    }
-
-    const dataRows = headerMap ? rows.slice(headerIdx + 1) : rows;
-    result.headerDetected = !!headerMap;
-
-    const FIELDS = ['position', 'company', 'location', 'pay', 'date_applied', 'status', 'notes', 'url'];
-
-    for (const cells of dataRows) {
-        const vals = {};
-        for (const f of FIELDS) {
-            const idx = headerMap ? headerMap[f] : IMPORT_POSITIONAL.indexOf(f);
-            vals[f] = (idx != null && idx >= 0 && idx < cells.length) ? cells[idx].trim() : '';
-        }
-
-        if (!vals.position || !vals.company) {
-            // Only flag rows that had some real content in a mapped column; blank or
-            // purely structural spreadsheet rows (empty cells, stray counts) are ignored.
-            if (FIELDS.some(f => vals[f] !== '')) result.skipped++;
-            continue;
-        }
-
-        const entry = {
-            position:     vals.position,
-            company:      vals.company,
-            location:     vals.location,
-            pay:          vals.pay,
-            date_applied: normalizeImportDate(vals.date_applied),
-            status:       normalizeImportStatus(vals.status),
-            notes:        vals.notes,
-            // Filler like "N/A", "-", "TBD" (nothing with a dot in it) means no link.
-            url:          vals.url.includes('.') ? normalizeUrlInput(vals.url) : '',
-        };
-        applyInterviewMilestone(entry);
-        result.entries.push(entry);
-    }
-    return result;
-}
+// The file parser (parseImport) lives in import-parser.js so it can be unit-tested.
 
 // Holds the text of the uploaded file (import is file-only — no paste box).
 let importFileText = '';
@@ -1077,19 +881,7 @@ async function doImport(includeUnlinked) {
 
     const user = await signedInUser();
     if (user) {
-        const payload = entries.map(e => ({
-            user_id:           user.id,
-            url:               e.url || null,
-            position:          e.position,
-            company:           e.company,
-            location:          e.location,
-            pay:               e.pay,
-            date_applied:      e.date_applied || null,
-            status:            e.status,
-            notes:             e.notes,
-            reached_interview: e.reached_interview ?? false,
-            cycle:             e.cycle,
-        }));
+        const payload = entries.map(e => toApplicationRow(e, user.id));
         // One insert, so it's all or nothing. On failure, keep the modal open with
         // the file still loaded so Import can be clicked again. (Keeping the rows
         // only in this browser would lose them on the next load from the cloud.)

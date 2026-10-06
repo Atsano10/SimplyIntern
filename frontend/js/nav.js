@@ -32,11 +32,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('nav_overlay').addEventListener('click', closeDrawer);
     document.getElementById('drawer_logout').addEventListener('click', () => logOut());
 
-    // Mark active nav link
-    const path = window.location.pathname;
+    // Mark active nav link: the one pointing at this page (<body data-page>).
+    const page = document.body.dataset.page;
     document.querySelectorAll('.nav_section').forEach(section => {
         const href = section.querySelector('a')?.getAttribute('href') || '';
-        if (href && path.includes(href.replace('.html', ''))) {
+        if (href && href.replace('.html', '') === page) {
             section.classList.add('active');
         }
     });

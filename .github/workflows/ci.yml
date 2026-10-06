@@ -1,0 +1,69 @@
+# Runs on every push and pull request, and shows a ✅ / ❌ next to the commit on GitHub.
+# It doesn't block deploys (Vercel and Supabase deploy main either way). It's the
+# warning light that a change broke something.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Read-only: CI only needs to check out the code.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests + lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.6   # pinned, so a new Deno release can't turn CI red on its own
+
+      # no-import-prefix is off: the edge functions import by URL (https://esm.sh/...,
+      # jsr:...), the way Supabase's examples do. Every other recommended rule is on.
+      # frontend/js isn't linted: Deno's linter expects Deno modules, and the site's
+      # plain <script> files share globals across files, so it only reports noise.
+      - name: Lint
+        run: deno lint --rules-exclude=no-import-prefix supabase/functions tests
+
+      - name: Type-check edge functions
+        run: deno check supabase/functions/*/index.ts
+
+      - name: Edge function tests
+        run: deno test supabase/functions
+
+      # Timezones on both sides of UTC: the CSV import once moved every date a day
+      # earlier for anyone east of UTC, which only shows up when run there.
+      - name: Frontend tests (New York)
+        run: deno test --allow-read tests
+        env:
+          TZ: America/New_York
+      - name: Frontend tests (Tokyo)
+        run: deno test --allow-read tests
+        env:
+          TZ: Asia/Tokyo
+
+  build:
+    name: Vercel build step
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      # Runs the same buildCommand Vercel does (read from frontend/vercel.json), on a
+      # throwaway copy because it rewrites the HTML. Fails if the build script is missing
+      # (the 2026-10-03 break) or a page points at a script/stylesheet that doesn't exist.
+      # The Supabase values are placeholders; the real ones live in Vercel.
+      - name: Run the build
+        env:
+          VERCEL: '1'
+          SUPABASE_URL: https://placeholder.supabase.co
+          SUPABASE_ANON_KEY: ci-placeholder
+        run: |
+          cp -R frontend "$RUNNER_TEMP/site"
+          cd "$RUNNER_TEMP/site"
+          sh -c "$(node -p "require('./vercel.json').buildCommand")"

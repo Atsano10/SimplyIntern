@@ -526,20 +526,6 @@ function renderResults(jobs, append) {
 // saved entry without re-fetching.
 const jobById = {};
 
-// Normalizes a listing row into the compact shape we persist for the saved list.
-function toSavedEntry(job) {
-  return {
-    listingId: job.id,
-    title:     job.title,
-    company:   job.company,
-    location:  job.location || '',
-    url:       job.url || '',
-    pay:       job.pay || '',
-    posted_at: job.posted_at || null,
-    type:      job.type || null,
-  };
-}
-
 // The set of listing ids currently saved, read from the local cache.
 function getSavedIds() {
   const saved = JSON.parse(localStorage.getItem('si_saved') || '[]');
@@ -626,6 +612,7 @@ async function markApplied(btn) {
     company:   btn.dataset.company,
     location:  btn.dataset.location,
     pay:       btn.dataset.pay || 'Not listed',
+    date_applied: todayLocal(),   // marking it applied = applied today
     status:    'Pending',
     notes:     '',
     cycle:     CURRENT_CYCLE,
@@ -634,18 +621,8 @@ async function markApplied(btn) {
   btn.disabled = true;   // until saved, so a double click can't add it twice
   const user = await signedInUser();
   if (user) {
-    const { data, error } = await client.from('applications').insert({
-      user_id:    user.id,
-      listing_id: entry.listingId,
-      url:        entry.url || null,   // the DB also fills this from the listing
-      position:   entry.position,
-      company:    entry.company,
-      location:   entry.location,
-      pay:        entry.pay,
-      status:     entry.status,
-      notes:      entry.notes,
-      cycle:      entry.cycle,
-    }).select().single();
+    const { data, error } = await client.from('applications')
+      .insert(toApplicationRow(entry, user.id)).select().single();
 
     if (error) {
       btn.disabled = false;

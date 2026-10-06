@@ -4,21 +4,6 @@
 
 let savedJobs = [];
 
-// Normalizes a listing row into the compact shape we persist in `si_saved`.
-// Kept in sync with the identical helper in search.js (separate page, no shared import).
-function toSavedEntry(job) {
-  return {
-    listingId: job.id,
-    title:     job.title,
-    company:   job.company,
-    location:  job.location || '',
-    url:       job.url || '',
-    pay:       job.pay || '',
-    posted_at: job.posted_at || null,
-    type:      job.type || null,
-  };
-}
-
 async function loadSaved() {
   try {
     const { data: { user } } = await client.auth.getUser();
@@ -118,6 +103,7 @@ async function applyFromSaved(job, btn) {
     company:   job.company,
     location:  job.location || '',
     pay:       job.pay || 'Not listed',
+    date_applied: todayLocal(),   // marking it applied = applied today
     status:    'Pending',
     notes:     '',
     cycle:     CURRENT_CYCLE,
@@ -125,18 +111,8 @@ async function applyFromSaved(job, btn) {
 
   const user = await signedInUser();
   if (user) {
-    const { data, error } = await client.from('applications').insert({
-      user_id:    user.id,
-      listing_id: entry.listingId,
-      url:        entry.url || null,   // the DB also fills this from the listing
-      position:   entry.position,
-      company:    entry.company,
-      location:   entry.location,
-      pay:        entry.pay,
-      status:     entry.status,
-      notes:      entry.notes,
-      cycle:      entry.cycle,
-    }).select().single();
+    const { data, error } = await client.from('applications')
+      .insert(toApplicationRow(entry, user.id)).select().single();
     if (error) {
       btn.disabled = false;
       showSyncError(`Couldn’t add “${job.title}” to your tracker.`, error);

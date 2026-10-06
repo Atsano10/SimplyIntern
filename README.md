@@ -33,6 +33,7 @@ Listings are deduplicated by URL and location is normalized to a consistent `Cit
 ## Project Structure
 
 ```
+├── .github/workflows/ci.yml  # Tests, lint, and the Vercel build on every push
 ├── frontend/                 # Vercel Root Directory
 │   ├── index.html            # Login
 │   ├── signup.html           # Registration
@@ -52,7 +53,9 @@ Listings are deduplicated by URL and location is normalized to a consistent `Cit
     ├── migrations/           # DB schema, RLS, RPCs, cron schedule
     ├── tests/                # SQL smoke tests
     └── functions/
-        └── daily-refresh/    # Scheduled scraping Edge Function
+        ├── daily-refresh/    # Scheduled scraping Edge Function
+        └── verify-link/      # Checks that a pasted listing link is real
+└── tests/frontend/           # Unit tests for the shared JS, CSV import, and HTML pages
 ```
 
 ## Local Development
@@ -74,6 +77,18 @@ Listings are deduplicated by URL and location is normalized to a consistent `Cit
 
 Note: the security headers in `frontend/vercel.json` are only applied on Vercel, not by a local static server.
 
+## Testing
+
+Tests run with [Deno](https://deno.com), from the repo root:
+
+```bash
+deno test supabase/functions                  # scraper + link-checker helpers
+deno test --allow-read tests                  # shared JS, CSV import, HTML page checks
+deno lint --rules-exclude=no-import-prefix supabase/functions tests
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs all of these on every push, plus the Vercel build step, and shows ✅ / ❌ on the commit. The frontend tests run in two timezones (New York and Tokyo), since date handling can differ on either side of UTC.
+
 ## Deployment
 
 The app is deployed on [Vercel](https://vercel.com) with the project's **Root Directory set to `frontend/`**. Vercel only reads `vercel.json` from the Root Directory, so `frontend/vercel.json` is the one that applies. On each deploy, `frontend/scripts/inject-env.js` runs as the build step: it writes the Supabase credentials into `js/config.js`, then stamps every local script/stylesheet URL in the HTML pages with a hash of that file's contents (`js/util.js?v=3f9c2a1b7e`).
@@ -86,7 +101,7 @@ Cache busting is automatic: editing a JS or CSS file changes its hash, so browse
 
 **Supabase:** migrations in `supabase/migrations/` are applied manually in order (via the Supabase SQL Editor). The `daily-refresh` Edge Function is deployed with the Supabase CLI and triggered daily at 06:00 UTC by the `pg_cron` job in migration `010`.
 
-**New recruitment cycle:** update `CURRENT_CYCLE` / `PREDEFINED_CYCLES` in `frontend/js/util.js` and the cycle literal in the `leaderboard_scores` view (latest cycles migration) together.
+**New recruitment cycle:** update `CURRENT_CYCLE` / `PREDEFINED_CYCLES` in `frontend/js/util.js` and the cycle literal in the `leaderboard_counts` view (latest leaderboard migration, currently 018) together.
 
 ## Database Schema
 

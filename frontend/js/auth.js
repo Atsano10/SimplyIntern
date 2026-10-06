@@ -306,6 +306,9 @@ async function verifyAccount() {
 
 // App pages are hidden until the account is verified so a deleted or logged-out user
 // never sees a flash of cached tracker/saved data before the redirect.
+// Pages that need a signed-in account (see the data-page check at the bottom).
+const APP_PAGES = ['search', 'saved', 'leaderboard', 'tracker', 'settings']
+
 async function requireAuth() {
     document.documentElement.style.visibility = 'hidden'
     const ok = await verifyAccount()
@@ -330,15 +333,17 @@ async function requireAuth() {
     ensureProfile()
 }
 
-if (!window.location.pathname.includes('search') &&
-    !window.location.pathname.includes('tracker') &&
-    !window.location.pathname.includes('signup') &&
-    !window.location.pathname.includes('settings') &&
-    !window.location.pathname.includes('saved') &&
-    !window.location.pathname.includes('leaderboard')) {
+// Each page names itself with <body data-page="...">, so this doesn't depend on the
+// URL. (The old check matched any path containing the word, so a page named
+// "research.html" would have counted as Search.)
+// The login page sends signed-in users into the app, signup is open to everyone, and
+// every other page requires an account. An unknown or missing name gets the
+// strictest treatment, so a new page that forgets the attribute still isn't public.
+const PAGE = document.body.dataset.page
+if (PAGE === 'login') {
     checkSession()
-} else if (['search', 'tracker', 'settings', 'saved', 'leaderboard']
-        .some(p => window.location.pathname.includes(p))) {
+} else if (PAGE !== 'signup') {
+    if (!APP_PAGES.includes(PAGE)) console.error(`auth.js: unknown data-page "${PAGE}" — treating it as signed-in only`)
     requireAuth()
 }
 

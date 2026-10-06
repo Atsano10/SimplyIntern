@@ -200,7 +200,79 @@ function toValidUsername(raw, suffix = '') {
 const PREDEFINED_CYCLES = ['2027 Summer', '2027 Spring', '2026 Winter'];
 const CURRENT_CYCLE = '2027 Summer';
 
+// ── Applications ──────────────────────────────────────────────────────────────
+
+// Interview-stage statuses ('Interview' is a legacy value older rows may still have).
+const INTERVIEW_STATUSES = ['1st Round Interview', '2nd Round Interview', 'Interview'];
+// Still waiting on a final answer ('Applied' is legacy). Same set the leaderboard counts
+// as pending — keep in sync with leaderboard_counts in the database (migration 018).
+const PENDING_STATUSES = ['Pending', 'Applied', ...INTERVIEW_STATUSES];
+
+// Maintains the reached_interview milestone for an application based on its status:
+// reaching any interview round turns it on; returning to Pending clears it (a restart);
+// Accepted/Rejected leave it untouched, so an interview that ended in a later
+// accept/reject still counts as an interview.
+function applyInterviewMilestone(app) {
+  if (app.status === 'Pending' || app.status === 'Applied') {
+    app.reached_interview = false;
+  } else if (INTERVIEW_STATUSES.includes(app.status)) {
+    app.reached_interview = true;
+  }
+}
+
+// The applications-table row for a tracker entry — the one place the field mapping
+// lives (Search, Saved, the tracker's add/edit/upload, and CSV import all use it).
+// Pass userId for an insert. Leave it out for an update: user_id and listing_id are
+// set once, when the row is created.
+function toApplicationRow(entry, userId) {
+  const row = {
+    url:               entry.url || null,   // the DB fills this from the listing when listing_id is set
+    position:          entry.position,
+    company:           entry.company,
+    location:          entry.location,
+    pay:               entry.pay,
+    date_applied:      entry.date_applied || null,
+    status:            entry.status,
+    notes:             entry.notes,
+    reached_interview: entry.reached_interview ?? false,
+    cycle:             entry.cycle || CURRENT_CYCLE,
+  };
+  if (userId) {
+    row.user_id    = userId;
+    row.listing_id = entry.listingId || null;
+  }
+  return row;
+}
+
+// Today as YYYY-MM-DD in the user's own timezone. Not toISOString(), which is UTC:
+// at 9pm in New York that's already tomorrow.
+function todayLocal(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+// Adds https:// when someone pastes "www.site.com/job" without it.
+function normalizeUrlInput(raw) {
+  const v = (raw || '').trim();
+  if (!v) return '';
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(v) && /^[\w-]+(\.[\w-]+)+(\/|\?|$)/.test(v)) return 'https://' + v;
+  return v;
+}
+
 // ── Listing cards (Search + Saved) ────────────────────────────────────────────
+
+// Normalizes a listing row into the compact shape we persist in `si_saved`.
+function toSavedEntry(job) {
+  return {
+    listingId: job.id,
+    title:     job.title,
+    company:   job.company,
+    location:  job.location || '',
+    url:       job.url || '',
+    pay:       job.pay || '',
+    posted_at: job.posted_at || null,
+    type:      job.type || null,
+  };
+}
 
 // Converts a date string into something readable like "Posted 3 days ago"
 function timeAgo(dateStr) {
