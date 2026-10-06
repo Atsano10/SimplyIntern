@@ -26,10 +26,10 @@ async function signUp() {
 
     // Pre-check the username. If email confirmation is enabled, profile creation is
     // deferred until the user confirms (see below), so we can't rely on the insert to
-    // surface a duplicate at signup time. username_exists is a safe anon-callable RPC.
-    const { data: taken } = await client.rpc('username_exists', { p_username: username })
-    if (taken) {
-        await showAlert('Username already taken!', 'Sign up')
+    // surface a problem at signup time. check_username is a safe anon-callable RPC.
+    const { data: problem } = await client.rpc('check_username', { p_username: username })
+    if (USERNAME_PROBLEMS[problem]) {
+        await showAlert(USERNAME_PROBLEMS[problem], 'Sign up')
         return
     }
 
@@ -81,12 +81,14 @@ async function signUp() {
         // constraint NAME (reliable), not by loose words in the message text.
         if (insertError.code === '23505') {
             if (insertError.message.includes('profiles_username_key')) {
-                await showAlert('Username already taken!', 'Sign up')
+                await showAlert(USERNAME_PROBLEMS.taken, 'Sign up')
             } else if (insertError.message.includes('profiles_email_key')) {
                 await showAlert('An account with this email already exists!', 'Sign up')
             } else {
                 await showAlert('That username or email is already taken.', 'Sign up')
             }
+        } else if (insertError.message.includes('profiles_username_appropriate')) {
+            await showAlert(USERNAME_PROBLEMS.offensive, 'Sign up')
         } else {
             await showAlert('Profile save failed: ' + insertError.message, 'Sign up failed')
         }
@@ -206,17 +208,26 @@ async function checkSession() {
 // Every name tried goes through toValidUsername, so the database's format rule can't
 // reject it (e.g. a 25-character email prefix, or a name picked before the rule).
 async function createProfileFor(session) {
-    const base = toValidUsername(session.user.user_metadata?.username
+    let base = toValidUsername(session.user.user_metadata?.username
         || localStorage.getItem('si_pending_username')
         || session.user.email.split('@')[0])
+
+    // An email prefix can be offensive (the user never typed it), so use plain "user".
+    try {
+        const { data: problem } = await client.rpc('check_username', { p_username: base })
+        if (problem === 'offensive') base = 'user'
+    } catch (_) {}
 
     // Try a few username variants. We RETRY on the actual insert, not just the
     // availability check, so a race (name free at check time, taken at insert) still
     // resolves. Each 23505 is inspected by constraint name so we never silently
     // "succeed" on a conflict that left the user without a profile (the bug that hid
     // the leaderboard issue for so long).
+    // After name, name1, name2, the suffix is a random 4-digit number, so a popular
+    // name (or the "user" fallback) can't run out of tries.
     for (let attempt = 0; attempt < 6; attempt++) {
-        const username = attempt === 0 ? base : toValidUsername(base, String(attempt))
+        const suffix = attempt <= 2 ? String(attempt) : String(1000 + Math.floor(Math.random() * 9000))
+        const username = attempt === 0 ? base : toValidUsername(base, suffix)
 
         // Best-effort pre-check so we usually land on the first attempt.
         try {

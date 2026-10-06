@@ -187,3 +187,48 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) =>
   }));
   return out;
 }
+
+// ── Internships ──────────────────────────────────────────────────────────────
+
+// Titles that mean an internship-type role. Plurals count too ("Research Internships").
+// "International" and "Internal" don't match: \b needs the word to end right there.
+const INTERN_RE = /\b(interns?|internships?|co-?ops?|co\s+op|externships?|externs?|summer|winter)\b/i;
+
+export const isInternship = (text: string) => INTERN_RE.test(text);
+
+// ── Pay ──────────────────────────────────────────────────────────────────────
+
+const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', CAD: 'CA$', EUR: '€', GBP: '£', AUD: 'A$' };
+const PAY_UNITS: Record<string, string> = { hour: 'hr', week: 'wk', month: 'mo', year: 'yr' };
+
+// A pay range as a short label: "$25–$33/hr", "$12,500/mo", "$120K–$150K/yr".
+// `interval` is any text naming the period ("per-hour-wage", "1 HOUR"); returns null
+// when there's no amount or the period isn't one we know (e.g. a one-off bonus).
+export function formatPay(min: number | null | undefined, max: number | null | undefined,
+                          currency: string | null | undefined, interval: string | null | undefined): string | null {
+  const unit = Object.keys(PAY_UNITS).find(u => (interval ?? '').toLowerCase().includes(u));
+  const lo = min || max, hi = max || min;
+  if (!unit || !lo || !hi) return null;
+  const code = (currency || 'USD').toUpperCase();
+  const symbol = CURRENCY_SYMBOLS[code] ?? `${code} `;
+  const amount = (n: number) =>
+    unit === 'year' && n >= 1000 ? `${symbol}${Math.round(n / 1000)}K`
+    : `${symbol}${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  return `${amount(lo)}${hi !== lo ? '–' + amount(hi) : ''}/${PAY_UNITS[unit]}`;
+}
+
+// Lever's optional salaryRange: { currency, min, max, interval: "per-hour-wage" }.
+export function leverPay(range?: { currency?: string; min?: number; max?: number; interval?: string } | null) {
+  return range ? formatPay(range.min, range.max, range.currency, range.interval) : null;
+}
+
+// Ashby's compensation (with includeCompensation=true): the base pay part of
+// summaryComponents, e.g. { compensationType: "Salary", interval: "1 MONTH", minValue }.
+// Equity and bonuses are left out.
+export function ashbyPay(comp?: {
+  summaryComponents?: { compensationType?: string; interval?: string; currencyCode?: string;
+                        minValue?: number | null; maxValue?: number | null }[];
+} | null) {
+  const base = comp?.summaryComponents?.find(c => c.compensationType === 'Salary');
+  return base ? formatPay(base.minValue, base.maxValue, base.currencyCode, base.interval) : null;
+}

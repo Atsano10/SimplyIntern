@@ -1,5 +1,5 @@
 // Loads frontend scripts into a sandbox the way a page does: plain <script> files,
-// run in order, sharing one global scope (so import-parser.js can use util.js's
+// run in order, sharing one global scope (so tracker-csv.js can use util.js's
 // functions). Only for scripts that don't touch the DOM while loading.
 import vm from 'node:vm';
 

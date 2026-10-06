@@ -45,18 +45,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         const newUsername = document.getElementById('s_username').value.trim();
         if (!USERNAME_PATTERN.test(newUsername)) return showStatus('username_status', USERNAME_RULE, false);
 
-        // Safe availability check (profiles is no longer publicly readable).
-        // The RPC excludes the caller's own row, so re-saving your own name is ok.
-        const { data: taken } = await client.rpc('username_exists', { p_username: newUsername });
-
-        if (taken) return showStatus('username_status', 'Username already taken.', false);
+        // Checked by the database (profiles is no longer publicly readable). It ignores
+        // the caller's own row, so re-saving your own name in new capitals is ok.
+        const { data: problem } = await client.rpc('check_username', { p_username: newUsername });
+        if (USERNAME_PROBLEMS[problem]) return showStatus('username_status', USERNAME_PROBLEMS[problem], false);
 
         const { error } = await client
             .from('profiles')
             .update({ username: newUsername })
             .eq('id', user.id);
 
-        if (error) return showStatus('username_status', 'Failed to update username.', false);
+        if (error) {
+            // The database rules still apply if a name slips past the check (a race).
+            const msg = error.message || '';
+            const why = msg.includes('profiles_username_key') ? USERNAME_PROBLEMS.taken
+                      : msg.includes('profiles_username_appropriate') ? USERNAME_PROBLEMS.offensive
+                      : 'Failed to update username.';
+            return showStatus('username_status', why, false);
+        }
         showStatus('username_status', `Username updated to @${newUsername}!`, true);
 
         // Keep nav drawer in sync without a page reload

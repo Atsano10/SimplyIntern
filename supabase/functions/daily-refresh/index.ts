@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import {
-  cleanCellText, cleanCompanyName, cleanZapplyLocation, dedupeKey, greenhousePostedDate, mapLimit,
-  mapPipeColumns, parseGithubAge, programPay, stripTrackingParams, timingSafeEqual,
+  ashbyPay, cleanCellText, cleanCompanyName, cleanZapplyLocation, dedupeKey, greenhousePostedDate, isInternship,
+  leverPay, mapLimit, mapPipeColumns, parseGithubAge, programPay, stripTrackingParams, timingSafeEqual,
 } from './helpers.ts';
 
 // Shape of a job listing as stored in the DB
@@ -16,13 +16,6 @@ interface Listing {
   posted_at:  string | null;
   updated_at: string;
 }
-
-// Internship detection
-
-// I check job titles against this regex to filter out full-time roles from the scraped data
-const INTERN_RE = /\b(intern|internship|co-op|coop|co\s+op|externship|extern|summer|winter)\b/i;
-
-const isInternship = (text: string) => INTERN_RE.test(text);
 
 // Figures out whether a listing is an internship, co-op, or externship based on its title
 function getType(title: string): string {
@@ -284,6 +277,7 @@ export function normalizeGreenhouseLocation(raw: string | null): string | null {
 // grammarly, miro, sentinelone, benchling, amplitude, clickup, segment. Many moved to
 // Ashby/Lever (see the "more data sources" TODO). Duplicates fever/feverup and
 // rocketlab/rocketlabusa resolved to the live one; internshiplist (an aggregator) is gone.
+// hubspot was removed 2026-10-06 (its board started returning 404).
 const GREENHOUSE_COMPANIES = [
   'cloudflare', 'didi', 'thesocialhub', 'ses', 'roku', 'celonis',
   'revolutionmedicines', 'asm', 'astranis', 'xometry', 'rocketlab', 'inter',
@@ -292,7 +286,7 @@ const GREENHOUSE_COMPANIES = [
   'stripe', 'figma', 'discord', 'lyft', 'pinterest', 'mongodb', 'brex',
   'airtable', 'gusto', 'scaleai', 'mercury', 'webflow', 'intercom', 'lattice',
   'airbnb', 'instacart', 'robinhood', 'coinbase', 'databricks', 'duolingo',
-  'squarespace', 'asana', 'twilio', 'hubspot', 'datadog', 'elastic', 'mixpanel',
+  'squarespace', 'asana', 'twilio', 'datadog', 'elastic', 'mixpanel',
   'dropbox', 'okta', 'gitlab', 'mozilla', 'pendo', 'brainstation', 'workato',
   'toast', 'ripple', 'block', 'point72', 'virtu', 'verkada',
 ];
@@ -300,7 +294,6 @@ const GREENHOUSE_COMPANIES = [
 // Board names cleanCompanyName can't fix ("Inter Carreiras" = "Inter Careers").
 const COMPANY_NAME_OVERRIDES: Record<string, string> = {
   inter:   'Inter',
-  hubspot: 'HubSpot',
   intercom: 'Intercom',   // board is branded "Fin", its AI product
 };
 
@@ -345,6 +338,105 @@ async function fetchGreenhouse(company: string): Promise<Listing[]> {
         url:        j.absolute_url,
         source:     'greenhouse',
         posted_at:  greenhousePostedDate(j),
+        updated_at: new Date().toISOString(),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+// Lever and Ashby
+
+// Two more job-board systems with public APIs, like Greenhouse. Many companies that
+// left Greenhouse moved to one of these. Neither API returns the company's name, so
+// it's listed with the board's slug. Checked 2026-10-06: every board here is live.
+// Boards marked "seasonal" had no internships that day but usually post them.
+// Left out on purpose: slugs that belong to different companies on each platform
+// (neon, unify, finch), and OpenAI (800+ jobs, no internships, a very large download).
+const LEVER_COMPANIES: Record<string, string> = {
+  palantir: 'Palantir', hermeus: 'Hermeus', aircall: 'Aircall', shieldai: 'Shield AI',
+  belvederetrading: 'Belvedere Trading', waabi: 'Waabi', rigetti: 'Rigetti', matchgroup: 'Match Group',
+  // seasonal
+  spotify: 'Spotify', wealthfront: 'Wealthfront', zoox: 'Zoox',
+};
+
+const ASHBY_COMPANIES: Record<string, string> = {
+  etched: 'Etched', saronic: 'Saronic', skydio: 'Skydio', helion: 'Helion', ramp: 'Ramp',
+  snowflake: 'Snowflake', notion: 'Notion', perplexity: 'Perplexity', cohere: 'Cohere',
+  harvey: 'Harvey', mercor: 'Mercor', '1x': '1X', abridge: 'Abridge', kalshi: 'Kalshi',
+  sierra: 'Sierra', voleon: 'Voleon', speak: 'Speak', physicalintelligence: 'Physical Intelligence',
+  chaidiscovery: 'Chai Discovery', decagon: 'Decagon', eightsleep: 'Eight Sleep', hex: 'Hex',
+  lambda: 'Lambda', modal: 'Modal', pika: 'Pika', rho: 'Rho', sentry: 'Sentry',
+  wealthsimple: 'Wealthsimple', weaviate: 'Weaviate', claylabs: 'Clay', commure: 'Commure',
+  exa: 'Exa', ledger: 'Ledger', semgrep: 'Semgrep', replit: 'Replit',
+  // seasonal
+  confluent: 'Confluent', benchling: 'Benchling', handshake: 'Handshake', cerebras: 'Cerebras',
+  crusoe: 'Crusoe', amplitude: 'Amplitude', '1password': '1Password', nerdwallet: 'NerdWallet',
+  clickup: 'ClickUp', miro: 'Miro', snyk: 'Snyk', zapier: 'Zapier', plaid: 'Plaid', cursor: 'Cursor',
+  whoop: 'WHOOP', quora: 'Quora', vanta: 'Vanta', supabase: 'Supabase', posthog: 'PostHog',
+  elevenlabs: 'ElevenLabs', cognition: 'Cognition',
+};
+
+// Every location a posting lists, plus "Remote" when it's a remote role, cleaned up the
+// same way as Greenhouse locations ("New York, NY / Remote").
+function jobLocation(locations: (string | null | undefined)[], remote: boolean): string | null {
+  const parts = [...locations, remote ? 'Remote' : null].filter((l): l is string => !!l?.trim());
+  return parts.length ? normalizeGreenhouseLocation(parts.join('; ')) : null;
+}
+
+// Fetches a company's Lever board: one JSON array with every posting.
+// The board's own "commitment" field also marks interns whose title doesn't say so.
+async function fetchLever(slug: string): Promise<Listing[]> {
+  try {
+    const res = await fetch(`https://api.lever.co/v0/postings/${slug}?mode=json`,
+      { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return [];
+    // deno-lint-ignore no-explicit-any
+    const posts: any[] = await res.json();
+    if (!Array.isArray(posts)) return [];
+    return posts
+      .filter(p => p.text && p.hostedUrl &&
+                   (isInternship(p.text) || /^intern(ship)?s?$/i.test(p.categories?.commitment ?? '')))
+      .map((p): Listing => ({
+        title:      p.text.trim(),
+        company:    LEVER_COMPANIES[slug],
+        location:   jobLocation(p.categories?.allLocations ?? [p.categories?.location], p.workplaceType === 'remote'),
+        pay:        leverPay(p.salaryRange),
+        type:       getType(p.text),
+        url:        p.hostedUrl,
+        source:     'lever',
+        posted_at:  typeof p.createdAt === 'number' ? new Date(p.createdAt).toISOString().split('T')[0] : null,
+        updated_at: new Date().toISOString(),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+// Fetches a company's Ashby board. Responses include full job descriptions (up to a
+// few MB), so the handler fetches these a few at a time. employmentType "Intern" also
+// marks interns whose title doesn't say so.
+async function fetchAshby(slug: string): Promise<Listing[]> {
+  try {
+    const res = await fetch(`https://api.ashbyhq.com/posting-api/job-board/${slug}?includeCompensation=true`,
+      { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return [];   // a missing board answers with plain text, not JSON
+    // deno-lint-ignore no-explicit-any
+    const jobs: any[] = (await res.json())?.jobs ?? [];
+    return jobs
+      .filter(j => j.title && j.jobUrl && j.isListed !== false &&
+                   (isInternship(j.title) || j.employmentType === 'Intern'))
+      .map((j): Listing => ({
+        title:      j.title.trim(),
+        company:    ASHBY_COMPANIES[slug],
+        // workplaceType, not isRemote: Ashby sets isRemote on hybrid jobs too.
+        location:   jobLocation([j.location, ...(j.secondaryLocations ?? []).map((s: { location?: string }) => s.location)],
+                                j.workplaceType === 'Remote'),
+        pay:        ashbyPay(j.compensation),
+        type:       getType(j.title),
+        url:        j.jobUrl,
+        source:     'ashby',
+        posted_at:  j.publishedAt ? String(j.publishedAt).split('T')[0] : null,
         updated_at: new Date().toISOString(),
       }));
   } catch {
@@ -587,7 +679,7 @@ async function fetchGithubRepo(gh: GithubRepo): Promise<Listing[]> {
 
 // Main handler
 // Invoked daily by the pg_cron job (migration 019) and manually on demand. It
-// pulls fresh listings from Greenhouse and GitHub, deduplicates by URL, upserts
+// pulls fresh listings from Greenhouse, Lever, Ashby and GitHub, deduplicates by URL, upserts
 // everything to the DB, and cleans up anything not seen in the last 30 days.
 //
 // Locked with a shared secret: the function has to stay verify_jwt = false (the cron
@@ -615,20 +707,26 @@ Deno.serve(async (req: Request) => {
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
-  // Fetch all sources in parallel to keep the function fast
-  const [ghResults, gitResults] = await Promise.all([
+  // Fetch all sources in parallel to keep the function fast. Lever and Ashby go a few
+  // boards at a time: their responses are large, and this keeps memory use down.
+  const [ghResults, leverResults, ashbyResults, gitResults] = await Promise.all([
     Promise.all(GREENHOUSE_COMPANIES.map(fetchGreenhouse)),
+    mapLimit(Object.keys(LEVER_COMPANIES), 4, fetchLever),
+    mapLimit(Object.keys(ASHBY_COMPANIES), 4, fetchAshby),
     Promise.all(GITHUB_REPOS.map(fetchGithubRepo)),
   ]);
 
+  // Direct company boards first, so they win when a GitHub list has the same posting.
   const allJobs: Listing[] = [
     ...ghResults.flat(),
+    ...leverResults.flat(),
+    ...ashbyResults.flat(),
     ...gitResults.flat(),
   ];
 
   // Deduplicate so the same posting from two sources appears once. Matching ignores
   // tracking params and www/trailing-slash differences (dedupeKey); the first source
-  // in the list wins (Greenhouse, then the GitHub lists in GITHUB_REPOS order).
+  // in the list wins (Greenhouse, Lever, Ashby, then the GitHub lists in GITHUB_REPOS order).
   const seen = new Set<string>();
   const unique = allJobs.filter(j => {
     const key = dedupeKey(j.url);

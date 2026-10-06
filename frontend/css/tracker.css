@@ -411,7 +411,7 @@ body {
     background: #080705;
 }
 
-.import_btn {
+.outline_btn {
     padding: 8px 18px;
     background: none;
     color: #702632;
@@ -423,7 +423,7 @@ body {
     transition: all 0.2s;
 }
 
-.import_btn:hover {
+.outline_btn:hover {
     background: #702632;
     color: #FFFFFA;
 }
@@ -881,8 +881,8 @@ body.dark .app_link:hover { color: #FFFFFA; }
 body.dark .imported_tag { background: #3a2a2c; color: #cbb9bd; }
 body.dark .required_mark { color: #f08a96; }
 
-body.dark .import_btn { color: #eeb9c2; border-color: #eeb9c2; }
-body.dark .import_btn:hover { background: #702632; color: #FFFFFA; border-color: #702632; }
+body.dark .outline_btn { color: #eeb9c2; border-color: #eeb9c2; }
+body.dark .outline_btn:hover { background: #702632; color: #FFFFFA; border-color: #702632; }
 body.dark .import_hint { color: #9a8284; }
 body.dark .import_hint code { background: #3a2a2c; color: #f0e8ea; }
 body.dark .import_file { color: #9a8284; }

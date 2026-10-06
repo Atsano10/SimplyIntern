@@ -61,8 +61,8 @@ for (const { name, html } of pages) {
       }
     }
     if (at('js/tracker.js') >= 0) {
-      assert(at('js/import-parser.js') >= 0, 'tracker.js needs js/import-parser.js');
-      assert(at('js/import-parser.js') < at('js/tracker.js'), 'js/import-parser.js must load before js/tracker.js');
+      assert(at('js/tracker-csv.js') >= 0, 'tracker.js needs js/tracker-csv.js');
+      assert(at('js/tracker-csv.js') < at('js/tracker.js'), 'js/tracker-csv.js must load before js/tracker.js');
     }
   });
 }

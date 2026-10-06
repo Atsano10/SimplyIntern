@@ -756,7 +756,7 @@ document.getElementById('modal_save').addEventListener('click', async () => {
 });
 
 // ── IMPORT ───────────────────────────────────────────────────────────────────
-// The file parser (parseImport) lives in import-parser.js so it can be unit-tested.
+// The file parser (parseImport) lives in tracker-csv.js so it can be unit-tested.
 
 // Holds the text of the uploaded file (import is file-only — no paste box).
 let importFileText = '';
@@ -923,6 +923,32 @@ document.getElementById('import_overlay').addEventListener('click', e => {
 });
 document.getElementById('import_confirm').addEventListener('click', () => doImport(false));
 document.getElementById('import_nolinks').addEventListener('click', () => doImport(true));
+
+// ── EXPORT ───────────────────────────────────────────────────────────────────
+
+// Downloads the applications in the folder being viewed as a CSV file
+// (simplyintern-2027-summer-2026-10-06.csv). The format is in tracker-csv.js.
+async function exportApplications() {
+    const apps = getVisibleApps();
+    if (apps.length === 0) {
+        await showAlert('There are no applications in this folder to export.', 'Export');
+        return;
+    }
+    const folder = activeFolder === ALL_FOLDERS ? 'all-folders' : activeFolder;
+    const slug = folder.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+    // The \uFEFF marker tells Excel the file is UTF-8, so accents and emoji survive.
+    const blob = new Blob(['\uFEFF' + applicationsToCsv(apps)], { type: 'text/csv;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `simplyintern-${slug || 'export'}-${todayLocal()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 0);
+}
+
+document.getElementById('export_btn').addEventListener('click', exportApplications);
 
 // File picker loads the file's text, then previews it.
 document.getElementById('import_file').addEventListener('change', e => {

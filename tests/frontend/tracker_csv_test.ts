@@ -1,10 +1,10 @@
-// Tests for the tracker's CSV/TSV import (js/import-parser.js).
+// Tests for the tracker's CSV/TSV import and export (js/tracker-csv.js).
 // Run: deno test --allow-read tests
 import { assertEquals } from 'jsr:@std/assert@1';
 import { loadScripts, plain } from './load_scripts.ts';
 
-const { parseImport, normalizeImportStatus, normalizeImportDate } =
-  loadScripts('js/util.js', 'js/import-parser.js');
+const { parseImport, normalizeImportStatus, normalizeImportDate, applicationsToCsv } =
+  loadScripts('js/util.js', 'js/tracker-csv.js');
 
 const parse = (text: string) => plain(parseImport(text));
 
@@ -150,4 +150,43 @@ Deno.test('dates that do not exist, or are not dates, come back empty', () => {
 Deno.test(`dates don't shift by a day in this timezone (${Intl.DateTimeFormat().resolvedOptions().timeZone})`, () => {
   for (const raw of ['10/5/2026', 'Oct 5, 2026', '2026-10-05', 'Oct 5'])
     assertEquals(date(raw), '2026-10-05', `date "${raw}"`);
+});
+
+// ── Export ───────────────────────────────────────────────────────────────────
+
+const apps = [
+  { position: 'SWE Intern', company: 'Stripe', location: 'Remote', pay: '$50/hr', date_applied: '2026-10-01',
+    status: '1st Round Interview', notes: 'Recruiter: "Sam", call Tues', url: 'https://stripe.com/jobs/1', cycle: '2027 Summer' },
+  { position: 'Intern, Data', company: 'Scale, Inc.', location: 'SF', pay: '', date_applied: '',
+    status: 'Rejected', notes: 'line one\nline two', url: '', cycle: '2027 Summer' },
+  { position: 'PM Intern', company: 'Figma', location: '', pay: '', date_applied: '2026-09-15',
+    status: 'Accepted', notes: '=HYPERLINK("http://evil.example","click")', url: 'https://figma.com/j/2', cycle: '2027 Spring' },
+];
+
+Deno.test('export: header row uses names the import recognizes', () => {
+  const header = applicationsToCsv([]).split('\r\n')[0];
+  assertEquals(header, 'Position,Company,Location,Pay,Date Applied,Status,Notes,Link,Folder');
+});
+
+Deno.test('export: commas, quotes and line breaks are quoted correctly', () => {
+  const csv = applicationsToCsv(apps);
+  assertEquals(csv.includes('"Recruiter: ""Sam"", call Tues"'), true);
+  assertEquals(csv.includes('"Intern, Data","Scale, Inc."'), true);
+  assertEquals(csv.includes('"line one\nline two"'), true);
+  assertEquals(csv.endsWith('\r\n'), true);
+});
+
+Deno.test('export: cells that a spreadsheet would run as a formula are made plain text', () => {
+  const csv = applicationsToCsv([{ position: '=1+1', company: '+cmd', notes: '-2', pay: '@SUM(A1)', status: 'Pending' }]);
+  const row = csv.split('\r\n')[1];
+  assertEquals(row.startsWith("'=1+1,'+cmd,,'@SUM(A1),,Pending,'-2,"), true, row);
+});
+
+Deno.test('export then import gives back the same applications', () => {
+  const back = parse(applicationsToCsv(apps));
+  assertEquals(back.headerDetected, true);
+  assertEquals(back.skipped, 0);
+  const fields = ['position', 'company', 'location', 'pay', 'date_applied', 'status', 'notes', 'url'];
+  const pick = (a: Record<string, string>) => Object.fromEntries(fields.map(f => [f, a[f] ?? '']));
+  assertEquals(back.entries.map(pick), apps.map(pick));
 });

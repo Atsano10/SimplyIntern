@@ -184,6 +184,14 @@ function showSyncError(message, error) {
 const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,20}$/;
 const USERNAME_RULE = 'Usernames are 3–20 characters: letters, numbers, and underscores only.';
 
+// What to tell the user for each answer from the check_username() database function
+// (migration 025), which also checks case-insensitive uniqueness and offensive words.
+const USERNAME_PROBLEMS = {
+  format:    USERNAME_RULE,
+  offensive: 'That username isn’t allowed. Please choose a different one.',
+  taken:     'That username is already taken.',
+};
+
 // Turns any string (an email prefix, an old signup name) into a username that passes
 // the rule, leaving room for `suffix`, a number added to dodge a name that's taken.
 function toValidUsername(raw, suffix = '') {

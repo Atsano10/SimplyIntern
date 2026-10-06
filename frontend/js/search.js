@@ -30,6 +30,25 @@ let locationPatternMap = {};
 // Display label for each option value, per filter (so the button shows "California", not "us:CA").
 const msLabels = { locations: {}, industries: {}, jobTypes: {} };
 
+// ── New since your last visit ────────────────────────────────────────────────
+// The database works out the cut-off per user (start_search_visit, migration 026):
+// listings added after it get a "New" badge, and the "New since your last visit"
+// option shows only those. Searches wait for this, so badges are right from the start.
+let newSince = null;
+const visitReady = (async () => {
+  try {
+    const { data, error } = await client.rpc('start_search_visit');
+    if (error || !data?.[0]?.since) return;
+    newSince = data[0].since;
+    const option = new Option(`New since your last visit (${data[0].new_count})`, 'new');
+    document.getElementById('posted_select').options.add(option, 1);   // right after "Any time"
+  } catch (_) {}
+})();
+
+function isNewListing(job) {
+  return !!(newSince && job.created_at && new Date(job.created_at) > new Date(newSince));
+}
+
 // Builds the checkbox list inside a filter panel from { value, label, count? } items.
 // `container` defaults to the panel itself; the location filter passes a group element.
 function msInit(id, stateKey, items, container) {
@@ -196,7 +215,7 @@ document.getElementById('clear_btn').addEventListener('click', clearFilters);
 // Resets the keyword input, unchecks all filter options, and snaps the button labels back to default
 function clearFilters() {
   document.getElementById('search_input').value = '';
-  document.getElementById('sort_select').value = 'newest';
+  document.getElementById('sort_select').value = 'relevance';
   document.getElementById('posted_select').value = '';
   document.getElementById('remote_only').checked = false;
 
@@ -255,6 +274,7 @@ function filtersToQuery() {
   // Always written, so even a search with no filters leaves a marker in the URL.
   p.set('sort', currentFilters.sort);
   if (currentFilters.postedWithinDays) p.set('posted', String(currentFilters.postedWithinDays));
+  if (currentFilters.newSince) p.set('posted', 'new');
   if (currentFilters.remoteOnly) p.set('remote', '1');
   return '?' + p.toString();
 }
@@ -343,6 +363,7 @@ async function initFromUrl(locationsReady) {
   if (!URL_KEYS.some(k => params.has(k))) return;
   // Location checkboxes (and their DB patterns) only exist once the panel is built.
   if (params.has('loc')) await locationsReady;
+  await visitReady;   // the "new" option only exists once the visit is known
   applyQueryToForm(params);
   performSearch({ restore: readScrollSnapshot() });
 }
@@ -352,6 +373,7 @@ async function initFromUrl(locationsReady) {
 // before the refresh and scrolls back to where the user was.
 async function performSearch({ restore = null } = {}) {
   document.getElementById('empty_state').style.display = 'none';
+  await visitReady;
 
   // Expand each selected location into its DB query patterns (deduped — e.g. picking
   // both "United States" and "California" would otherwise repeat California's).
@@ -366,7 +388,8 @@ async function performSearch({ restore = null } = {}) {
     industries:       [...msState.industries],
     jobTypes:         [...msState.jobTypes],
     sort:             document.getElementById('sort_select').value,
-    postedWithinDays: postedVal ? Number(postedVal) : null,
+    postedWithinDays: postedVal && postedVal !== 'new' ? Number(postedVal) : null,
+    newSince:         postedVal === 'new' ? newSince : null,
     remoteOnly:       document.getElementById('remote_only').checked,
   };
   currentOffset = 0;
@@ -473,7 +496,7 @@ function renderResults(jobs, append) {
     if (job.id) div.dataset.listingId = job.id;   // anchor for scroll restore
     div.innerHTML = `
       <div class="left_jobs">
-        <div class="info_title">${esc(job.title)}</div>
+        <div class="info_title">${isNewListing(job) ? '<span class="new_badge">New</span>' : ''}${esc(job.title)}</div>
         <div class="info_company">${esc(job.company)}</div>
         <div class="info_location">${esc(job.location || 'Location not listed')}</div>
         ${payBadgeHtml(job.pay)}

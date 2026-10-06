@@ -6,12 +6,12 @@ A clean, automated internship aggregator that pulls listings from multiple sourc
 
 ## Features
 
-- **Search** — Filter internship listings by keyword, location, industry, job type, posting date, and remote-only, sorted newest/oldest/company. Filtering runs server-side with infinite scroll.
+- **Search** — Keyword search that matches each word against title, company and location, with word stems, common abbreviations (swe, ml, nyc) and typo tolerance, ranked by best match. Filter by location, industry, job type, posting date, remote-only, or "New since your last visit" (with a New badge on each card). Filtering runs server-side with infinite scroll.
 - **Saved** — Bookmark listings into a shortlist and move them to the tracker once applied
-- **Tracker** — Log applications with status, notes, pay, and dates; organize them into recruitment-cycle folders; import from a CSV/TSV spreadsheet export; see a funnel and response/interview/offer rates
+- **Tracker** — Log applications with status, notes, pay, and dates; organize them into recruitment-cycle folders; import from a CSV/TSV spreadsheet and export back to CSV; see a funnel and response/interview/offer rates
 - **Leaderboard** — Compete on a "Grind Score" (rejected + pending applications in the current cycle), with an opt-out in settings
 - **Daily Refresh** — Listings auto-update every day; listings not seen for 30 days are removed
-- **Auth** — Email/password (with email verification and password reset) and Google OAuth, plus account settings, dark mode, and account deletion
+- **Auth** — Email/password (with email verification and password reset) and Google OAuth, plus account settings, dark mode, and account deletion. Usernames are unique ignoring case, and offensive ones are blocked by the database
 
 ## Tech Stack
 
@@ -24,7 +24,9 @@ A clean, automated internship aggregator that pulls listings from multiple sourc
 
 ## Data Sources
 
-- **Greenhouse** — Public job boards from 65 companies (Stripe, Figma, Databricks, Coinbase, Lyft, etc.)
+- **Greenhouse** — Public job boards from 64 companies (Stripe, Figma, Databricks, Coinbase, Lyft, etc.)
+- **Lever** — 11 company boards (Palantir, Shield AI, Spotify, Belvedere Trading, etc.)
+- **Ashby** — 56 company boards (Ramp, Notion, Snowflake, Perplexity, Cohere, Plaid, etc.), with pay ranges when the company lists them
 - **GitHub internship lists** — [SimplifyJobs/Summer2027-Internships](https://github.com/SimplifyJobs/Summer2027-Internships), [vanshb03/Summer2027-Internships](https://github.com/vanshb03/Summer2027-Internships), and [zapplyjobs/Internships-2027](https://github.com/zapplyjobs/Internships-2027)
 - **Open-source programs** — [deepanshu1422/List-Of-Open-Source-Internships-Programs](https://github.com/deepanshu1422/List-Of-Open-Source-Internships-Programs) (GSoC, Outreachy, MLH Fellowship, contests, bootcamps), each labeled Paid stipend / Unpaid / Tuition on Search
 

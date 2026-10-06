@@ -1,6 +1,9 @@
-// import-parser.js — turns an uploaded CSV/TSV file into tracker entries. No DOM or
-// Supabase access, so it can be unit-tested on its own (tests/frontend/). Loaded on the
-// tracker page after util.js (uses applyInterviewMilestone and normalizeUrlInput).
+// tracker-csv.js — the tracker's spreadsheet import (parseImport) and export
+// (applicationsToCsv). No DOM or Supabase access, so it can be unit-tested on its own
+// (tests/frontend/). Loaded on the tracker page after util.js (uses
+// applyInterviewMilestone and normalizeUrlInput).
+
+// ── IMPORT ───────────────────────────────────────────────────────────────────
 
 // Column-header aliases → our internal fields (case/space-insensitive match).
 const IMPORT_HEADER_ALIASES = {
@@ -156,7 +159,7 @@ function parseImport(text) {
         const vals = {};
         for (const f of FIELDS) {
             const idx = headerMap ? headerMap[f] : IMPORT_POSITIONAL.indexOf(f);
-            vals[f] = (idx != null && idx >= 0 && idx < cells.length) ? cells[idx].trim() : '';
+            vals[f] = (idx != null && idx >= 0 && idx < cells.length) ? unprotectCell(cells[idx].trim()) : '';
         }
 
         if (!vals.position || !vals.company) {
@@ -181,4 +184,39 @@ function parseImport(text) {
         result.entries.push(entry);
     }
     return result;
+}
+
+// ── EXPORT ───────────────────────────────────────────────────────────────────
+
+// Export columns: [header, field]. The headers are names the import recognizes, so an
+// exported file can be imported again. (Folder is informational: an import goes into
+// the folder you're viewing.)
+const EXPORT_COLUMNS = [
+    ['Position', 'position'], ['Company', 'company'], ['Location', 'location'],
+    ['Pay', 'pay'], ['Date Applied', 'date_applied'], ['Status', 'status'],
+    ['Notes', 'notes'], ['Link', 'url'], ['Folder', 'cycle'],
+];
+
+// Spreadsheet apps run a cell that starts with = + - or @ as a formula, so a note like
+// "=HYPERLINK(...)" could do something when the file is opened ("CSV injection").
+// A leading apostrophe makes the app show it as plain text; the import removes it.
+function protectCell(value) {
+    return /^[=+\-@\t\r]/.test(value) ? "'" + value : value;
+}
+function unprotectCell(value) {
+    return value.replace(/^'(?=[=+\-@])/, '');
+}
+
+// One CSV field: quoted when it holds a comma, quote, or line break (quotes doubled).
+function csvField(value) {
+    const s = protectCell(String(value ?? ''));
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+// The applications as CSV text: a header row, then one row each (Windows line endings,
+// which every spreadsheet app reads).
+function applicationsToCsv(apps) {
+    const rows = [EXPORT_COLUMNS.map(([header]) => header)]
+        .concat(apps.map(app => EXPORT_COLUMNS.map(([, field]) => app[field])));
+    return rows.map(row => row.map(csvField).join(',')).join('\r\n') + '\r\n';
 }

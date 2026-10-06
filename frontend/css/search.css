@@ -395,6 +395,19 @@ body {
 .info_pay.unpaid  { background: #fff3cd; color: #856404; }
 .info_pay.tuition { background: #f8d7da; color: #842029; }
 
+/* Listings added since the user's last visit (search.js) */
+.new_badge {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 0 7px;
+    border-radius: 10px;
+    background: #702632;
+    color: #FFFFFA;
+    font-size: 11px;
+    font-weight: 700;
+    vertical-align: middle;
+}
+
 .center_jobs {
     display: flex;
     flex-direction: column;
@@ -571,6 +584,7 @@ body.dark .info_location { color: #9a8284; }
 body.dark .info_pay.paid    { background: #163a26; color: #7fd8a4; }
 body.dark .info_pay.unpaid  { background: #2a200a; color: #ffc107; }
 body.dark .info_pay.tuition { background: #3a1a1e; color: #f08a96; }
+body.dark .new_badge { background: #eeb9c2; color: #241819; }
 body.dark .info_rate { color: #f0e8ea; }
 body.dark .info_link { color: #eeb9c2; }
 body.dark .info_link:hover { color: #f0e8ea; }

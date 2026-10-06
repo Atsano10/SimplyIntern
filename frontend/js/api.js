@@ -23,10 +23,9 @@ const TYPE_PATTERNS = {
 // hand them to the RPC, which does the matching in SQL with trigram indexes.
 //
 // Matching semantics are identical to the previous client-side version:
-//   keyword  -> title OR company substring   location -> ILIKE ANY(patterns)
-//   industry -> title ILIKE ANY(patterns)    type     -> title ILIKE ANY(patterns)
-// (Full-text / relevance ranking on the keyword box is a deliberate future upgrade;
-//  this pass keeps exact parity so the scaling change doesn't shift results.)
+//   keyword  -> every word must match the title, company or location: as text,
+//               an abbreviation (swe, nyc), a word stem, or a close spelling (026)
+//   location -> ILIKE ANY(patterns)   industry/type -> title ILIKE ANY(patterns)
 
 // Returns one page of filtered results. Same (filters, offset, limit) signature the
 // search UI already uses for infinite scroll.
@@ -41,17 +40,22 @@ async function fetchJobs(filters = {}, offset = 0, limit = 50) {
 
   const locationPatterns = filters.locationPatterns || [];
 
-  const { data, error } = await client.rpc('search_listings', {
+  const params = {
     p_keyword:            filters.keyword || null,
     p_location_patterns:  locationPatterns.length ? locationPatterns : null,
     p_industry_patterns:  industryPatterns.length ? industryPatterns : null,
     p_type_patterns:      typePatterns.length ? typePatterns : null,
     p_posted_within_days: filters.postedWithinDays ?? null,
     p_remote_only:        !!filters.remoteOnly,
-    p_sort:               filters.sort || 'newest',
+    p_sort:               filters.sort || 'relevance',
     p_limit:              limit,
     p_offset:             offset,
-  });
+  };
+  // Only sent when used, so a database that doesn't have it yet (migration 026) still
+  // answers every other search.
+  if (filters.newSince) params.p_new_since = filters.newSince;
+
+  const { data, error } = await client.rpc('search_listings', params);
 
   if (error) throw error;
   return data || [];

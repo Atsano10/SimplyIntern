@@ -1,8 +1,8 @@
 // Run: deno test supabase/functions/daily-refresh
 import { assert, assertEquals } from 'jsr:@std/assert@1';
 import {
-  cleanCellText, cleanCompanyName, cleanZapplyLocation, dedupeKey, greenhousePostedDate, mapPipeColumns,
-  parseGithubAge, programPay, stripTrackingParams, timingSafeEqual,
+  ashbyPay, cleanCellText, cleanCompanyName, cleanZapplyLocation, dedupeKey, formatPay, greenhousePostedDate,
+  isInternship, leverPay, mapPipeColumns, parseGithubAge, programPay, stripTrackingParams, timingSafeEqual,
 } from './helpers.ts';
 
 Deno.test('cleanCompanyName strips suffixes, labels, and symbols', () => {
@@ -114,4 +114,35 @@ Deno.test('greenhousePostedDate uses first_published, not the last edit', () => 
   assertEquals(greenhousePostedDate({ updated_at: '2026-10-02T18:48:15-04:00' }), '2026-10-02');
   assertEquals(greenhousePostedDate({ first_published: null, updated_at: null }), null);
   assertEquals(greenhousePostedDate({}), null);
+});
+
+Deno.test('isInternship: internship titles, including plurals, but not look-alikes', () => {
+  for (const t of ['Software Engineer Intern', 'Research Internships', 'Summer Interns', 'Co-op (Winter 2027)',
+                   'Engineering Coop', 'Spring Co-ops', 'Legal Externship', 'Summer Analyst'])
+    assert(isInternship(t), t);
+  for (const t of ['International Tax Manager', 'Internal Audit Lead', 'Software Engineer', 'Cooper Labs Engineer'])
+    assert(!isInternship(t), t);
+});
+
+Deno.test('formatPay: short labels for each period', () => {
+  assertEquals(formatPay(25, 33, 'USD', 'per-hour-wage'), '$25–$33/hr');
+  assertEquals(formatPay(27.5, 27.5, 'USD', '1 HOUR'), '$27.5/hr');
+  assertEquals(formatPay(12500, 12500, 'USD', '1 MONTH'), '$12,500/mo');
+  assertEquals(formatPay(120000, 150000, 'USD', 'per-year-salary'), '$120K–$150K/yr');
+  assertEquals(formatPay(40, null, 'CAD', 'per-hour-wage'), 'CA$40/hr');
+  assertEquals(formatPay(null, 3000, 'EUR', '1 MONTH'), '€3,000/mo');
+  assertEquals(formatPay(30, 40, 'INR', '1 HOUR'), 'INR 30–INR 40/hr');
+  assertEquals(formatPay(null, null, 'USD', '1 HOUR'), null);   // no amount
+  assertEquals(formatPay(5000, 5000, 'USD', 'NONE'), null);     // one-off, not a rate
+});
+
+Deno.test('leverPay and ashbyPay read each API\'s pay shape', () => {
+  assertEquals(leverPay({ currency: 'USD', min: 25, max: 33, interval: 'per-hour-wage' }), '$25–$33/hr');
+  assertEquals(leverPay(undefined), null);
+  assertEquals(ashbyPay({ summaryComponents: [
+    { compensationType: 'EquityPercentage', interval: 'NONE', minValue: 0.1, maxValue: 0.2 },
+    { compensationType: 'Salary', interval: '1 MONTH', currencyCode: 'USD', minValue: 12500, maxValue: 12500 },
+  ] }), '$12,500/mo');
+  assertEquals(ashbyPay({ summaryComponents: [] }), null);
+  assertEquals(ashbyPay(null), null);
 });
